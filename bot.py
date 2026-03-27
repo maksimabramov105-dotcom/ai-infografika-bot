@@ -210,14 +210,15 @@ def analyze_product_image(image_path: str) -> dict:
     "Короткое преимущество 4 (макс 22 символа)"
   ],
   "badge": "ХИТ | НОВИНКА | -20% | БЕСТСЕЛЛЕР | ТОП",
-  "cta": "Купить сейчас | В корзину | Заказать",
-  "color_theme": "warm | cool | neutral | dark"
+  "color_theme": "warm | cool | neutral | dark",
+  "scene_description": "Детальное описание красивой фоновой сцены для товара на английском. Например для свечи с ароматом апельсина и корицы: 'cozy dark background with soft bokeh lights, orange slices, cinnamon sticks, dried flowers, warm golden tones, luxury lifestyle product photography'. Описание должно включать элементы которые ассоциируются с товаром (ингредиенты, назначение, стиль жизни). НЕ включай сам товар в описание сцены — только окружение и декор."
 }
 
 Правила:
-- Пиши по-русски
+- Пиши по-русски (кроме scene_description — оно на АНГЛИЙСКОМ)
 - Преимущества — конкретные, с цифрами (напр: "Горит 25 часов", "100% кокос. воск")
 - color_theme: warm=еда/beauty/дом/свечи, cool=техника/спорт, neutral=одежда, dark=люкс
+- scene_description — ВСЕГДА на английском, максимально детально, для генерации фонового изображения
 """
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -225,7 +226,7 @@ def analyze_product_image(image_path: str) -> dict:
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
             {"type": "text", "text": prompt},
         ]}],
-        max_tokens=400,
+        max_tokens=500,
     )
     raw = re.sub(r"```json|```", "", response.choices[0].message.content.strip()).strip()
     try:
@@ -233,9 +234,35 @@ def analyze_product_image(image_path: str) -> dict:
     except Exception:
         return {
             "title": "Товар", "subtitle": "Отличное качество",
-            "features": ["Натуральный состав", "Горит 25 часов", "Быстрая доставка", "Гарантия"],
-            "badge": "ХИТ", "cta": "Купить сейчас", "color_theme": "warm",
+            "features": ["Натуральный состав", "Быстрая доставка", "Высокое качество", "Гарантия"],
+            "badge": "ХИТ", "color_theme": "warm",
+            "scene_description": "elegant dark background with soft bokeh lights, luxury product photography, warm tones",
         }
+
+
+# ── DALL-E 3: генерация красивого фона ────────────────────────────────────────────
+def generate_scene_background(scene_desc: str) -> str | None:
+    """Генерирует фоновую сцену 1024x1024 через DALL-E 3 и возвращает путь к файлу."""
+    prompt = (
+        f"Beautiful product photography background scene, no text, no product, no labels, "
+        f"no words, square format 1:1, professional studio quality, shallow depth of field: "
+        f"{scene_desc}"
+    )
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        image_url = response.data[0].url
+        bg_path = "/tmp/scene_bg.png"
+        urllib.request.urlretrieve(image_url, bg_path)
+        return bg_path
+    except Exception as e:
+        logging.warning(f"DALL-E scene generation failed: {e}")
+        return None
 
 
 # ── COLOR THEMES ─────────────────────────────────────────────────────────────────
@@ -317,8 +344,8 @@ def draw_text_shadow(draw, xy, text, font, fill, shadow_alpha=100):
     draw.text((x, y), text, font=font, fill=fill)
 
 
-# ── INFOGRAPHIC — финальный дизайн как у конкурентов ─────────────────────────────
-def make_infographic(img_path: str, data: dict) -> str:
+# ── INFOGRAPHIC — DALL-E фон + текст поверх ─────────────────────────────────────
+def make_infographic(img_path: str, data: dict, scene_bg_path: str | None = None) -> str:
     title    = data.get("title", "Товар").upper()
     subtitle = data.get("subtitle", "")
     features = data.get("features", [])[:4]
@@ -331,27 +358,33 @@ def make_infographic(img_path: str, data: dict) -> str:
     sc   = (*t["sub_color"], 230)
     WHITE = (255, 255, 255, 255)
 
-    # ── ФОН: фото товара сильно размыто + тёмный оверлей ─────────────────────────
-    raw = Image.open(img_path).convert("RGB")
-    rw, rh = raw.size
-    sq = min(rw, rh)
-    bg = raw.crop(((rw - sq) // 2, (rh - sq) // 2, (rw - sq) // 2 + sq, (rh - sq) // 2 + sq))
-    bg = bg.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(45))
-    ov = Image.new("RGBA", (W, H), (*t["overlay_rgb"], t["overlay_a"]))
-    canvas = Image.alpha_composite(bg.convert("RGBA"), ov)
+    # ── ФОН: DALL-E сгенерированная сцена, или fallback на размытое фото ────────
+    if scene_bg_path and os.path.exists(scene_bg_path):
+        bg_img = Image.open(scene_bg_path).convert("RGB").resize((W, H), Image.LANCZOS)
+    else:
+        raw = Image.open(img_path).convert("RGB")
+        rw, rh = raw.size
+        sq = min(rw, rh)
+        bg_img = raw.crop(((rw-sq)//2, (rh-sq)//2, (rw-sq)//2+sq, (rh-sq)//2+sq))
+        bg_img = bg_img.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(45))
 
-    # Лёгкий градиент снизу — затемняем нижнюю зону для читаемости карточек
-    grad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd   = ImageDraw.Draw(grad)
-    for i in range(400):
-        alpha = int(i * 0.32)
-        gd.line([(0, H - i), (W, H - i)], fill=(0, 0, 0, alpha))
-    canvas = Image.alpha_composite(canvas, grad)
+    canvas = bg_img.convert("RGBA")
 
+    # Затемнение сверху и снизу — для читаемости текста
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    # Сверху — градиент от тёмного к прозрачному
+    for i in range(450):
+        a = int(180 * (1 - i / 450) ** 1.5)
+        od.line([(0, i), (W, i)], fill=(0, 0, 0, a))
+    # Снизу — градиент от прозрачного к тёмному
+    for i in range(500):
+        a = int(200 * (1 - i / 500) ** 1.3)
+        od.line([(0, H - 1 - i), (W, H - 1 - i)], fill=(0, 0, 0, a))
+    canvas = Image.alpha_composite(canvas, overlay)
     draw = ImageDraw.Draw(canvas)
 
-    # ── ЗАГОЛОВОК — огромный, занимает верхние 35% ──────────────────────────────
-    # Авто-подбор размера: стартуем с 96px, уменьшаем до влезания в 3 строки
+    # ── ЗАГОЛОВОК — огромный, сверху ────────────────────────────────────────────
     title_max_w = W - MARGIN * 2
     f_title_use = None
     title_lines = []
@@ -366,121 +399,61 @@ def make_infographic(img_path: str, data: dict) -> str:
         f_title_use = get_font("bold", 50)
         title_lines = wrap(title, f_title_use, title_max_w)
 
-    # Рисуем заголовок, центрируем
-    ty = 70
+    ty = 55
     th = text_h(f_title_use)
     for line in title_lines[:3]:
         x = centered_x(line, f_title_use)
-        draw_text_shadow(draw, (x, ty), line, f_title_use, tc, shadow_alpha=160)
-        ty += th + 10
-    ty += 14
+        draw_text_shadow(draw, (x, ty), line, f_title_use, tc, shadow_alpha=200)
+        ty += th + 8
+    ty += 10
 
     # Подзаголовок
-    f_sub = get_font("regular", 34)
+    f_sub = get_font("regular", 36)
     if subtitle:
-        for line in wrap(subtitle, f_sub, title_max_w)[:1]:
+        for line in wrap(subtitle, f_sub, title_max_w)[:2]:
             x = centered_x(line, f_sub)
-            draw_text_shadow(draw, (x, ty), line, f_sub, sc, shadow_alpha=120)
+            draw_text_shadow(draw, (x, ty), line, f_sub, sc, shadow_alpha=150)
             ty += text_h(f_sub) + 6
-    ty += 16
 
-    # ── ФОТО ТОВАРА — без тяжёлой белой рамки, с мягким свечением ────────────────
-    remaining  = H - ty - 310   # 310px для feature-блока снизу
-    PHOTO_SIZE = max(260, min(380, remaining))
+    # ── ПРЕИМУЩЕСТВА — внизу поверх затемнения ──────────────────────────────────
+    f_feat = get_font("bold", 32)
+    f_feat_sm = get_font("regular", 28)
+    feat_line_h = text_h(f_feat) + 14
+    total_feat_h = len(features) * feat_line_h + 20
 
-    prod = Image.open(img_path).convert("RGBA")
-    pw, ph = prod.size
-    sq2   = min(pw, ph)
-    prod  = prod.crop(((pw - sq2) // 2, (ph - sq2) // 2,
-                       (pw - sq2) // 2 + sq2, (ph - sq2) // 2 + sq2))
-    prod  = prod.resize((PHOTO_SIZE, PHOTO_SIZE), Image.LANCZOS)
-
-    px = (W - PHOTO_SIZE) // 2
-    py = ty
-
-    # Мягкое свечение вокруг фото (без белой рамки)
-    glow = Image.new("RGBA", (PHOTO_SIZE + 80, PHOTO_SIZE + 80), (0, 0, 0, 0))
-    ImageDraw.Draw(glow).rounded_rectangle(
-        [20, 20, PHOTO_SIZE + 60, PHOTO_SIZE + 60], radius=36, fill=(255, 255, 255, 50)
+    # Полупрозрачная тёмная подложка снизу
+    feat_y_start = H - total_feat_h - 30
+    feat_bg = Image.new("RGBA", (W, total_feat_h + 50), (0, 0, 0, 0))
+    ImageDraw.Draw(feat_bg).rounded_rectangle(
+        [MARGIN - 10, 0, W - MARGIN + 10, total_feat_h + 50],
+        radius=24, fill=(0, 0, 0, 90),
     )
-    glow = glow.filter(ImageFilter.GaussianBlur(28))
-    paste_a(canvas, glow, (px - 40, py - 20))
+    paste_a(canvas, feat_bg, (0, feat_y_start - 10))
 
-    # Фото скруглёнными углами — прямо на фон (без белой карточки)
-    photo_mask = Image.new("L", (PHOTO_SIZE, PHOTO_SIZE), 0)
-    ImageDraw.Draw(photo_mask).rounded_rectangle(
-        [0, 0, PHOTO_SIZE, PHOTO_SIZE], radius=26, fill=255
-    )
-    canvas.paste(prod, (px, py), photo_mask)
-
-    # ── ПРЕИМУЩЕСТВА — лёгкие полупрозрачные карточки ────────────────────────────
-    FEAT_TOP = py + PHOTO_SIZE + 28
-    COL_W    = (W - MARGIN * 2 - 14) // 2
-    ROW_H    = max(90, min(130, (H - FEAT_TOP - 24) // 2 - 10))
-    GAP      = 14
-    LEFT_X   = MARGIN
-    RIGHT_X  = MARGIN + COL_W + GAP
-
-    f_feat = get_font("bold",    27)
-    f_num  = get_font("bold",    20)
-
-    feat_fill = t["feat_bg"] if len(t["feat_bg"]) == 4 else (*t["feat_bg"][:3], 200)
-
-    positions = [
-        (LEFT_X,  FEAT_TOP),
-        (RIGHT_X, FEAT_TOP),
-        (LEFT_X,  FEAT_TOP + ROW_H + GAP),
-        (RIGHT_X, FEAT_TOP + ROW_H + GAP),
-    ]
-
+    fy = feat_y_start
     for i, feat in enumerate(features[:4]):
-        if i >= len(positions):
-            break
-        fx, fy = positions[i]
-
-        # Тонкая тень
-        paste_a(canvas, rlayer(COL_W + 4, ROW_H + 4, 18,
-                                (0, 0, 0, 55), blur=12), (fx - 2, fy + 3))
-
-        # Полупрозрачная карточка
-        card = rlayer(COL_W, ROW_H, 18, fill=feat_fill)
-        cd   = ImageDraw.Draw(card)
-
-        # Цветная полоска слева (акцент)
-        cd.rounded_rectangle([0, 0, 6, ROW_H], radius=3, fill=(*acc, 255))
-
-        # Круг с номером
-        IR  = 22
-        ICX = 14 + IR
-        ICY = ROW_H // 2
-        cd.ellipse([ICX - IR, ICY - IR, ICX + IR, ICY + IR], fill=(*acc, 240))
-        ns  = str(i + 1)
-        nb  = f_num.getbbox(ns)
+        # Кружок с номером
+        cx = MARGIN + 22
+        cy = fy + feat_line_h // 2
+        draw.ellipse([cx - 18, cy - 18, cx + 18, cy + 18], fill=(*acc, 230))
+        f_num = get_font("bold", 20)
+        ns = str(i + 1)
+        nb = f_num.getbbox(ns)
         nw, nh = nb[2] - nb[0], nb[3] - nb[1]
-        cd.text((ICX - nw // 2, ICY - nh // 2 - 1), ns, font=f_num, fill=WHITE)
-
+        draw.text((cx - nw // 2, cy - nh // 2 - 1), ns, font=f_num, fill=WHITE)
         # Текст
-        TX     = ICX + IR + 12
-        max_tw = COL_W - TX - 10
-        flines = wrap(feat, f_feat, max_tw) or [feat[:22]]
-        lh     = text_h(f_feat) + 5
-        total  = min(len(flines), 2) * lh
-        tty    = (ROW_H - total) // 2
-
-        for line in flines[:2]:
-            cd.text((TX, tty), line, font=f_feat, fill=(*t["feat_text"], 245))
-            tty += lh
-
-        paste_a(canvas, card, (fx, fy))
+        draw_text_shadow(draw, (cx + 28, cy - text_h(f_feat) // 2),
+                         feat, f_feat, WHITE, shadow_alpha=180)
+        fy += feat_line_h
 
     # ── БЕЙДЖ (верх-лево) ─────────────────────────────────────────────────────────
     f_badge = get_font("bold", 26)
-    btxt    = f"  {badge}  "
-    bw      = int(f_badge.getlength(btxt)) + 16
-    bh      = 44
-    bl      = rlayer(bw, bh, 11, fill=(205, 35, 35, 255))
+    btxt = f"  {badge}  "
+    bw = int(f_badge.getlength(btxt)) + 16
+    bh = 44
+    bl = rlayer(bw, bh, 11, fill=(205, 35, 35, 240))
     ImageDraw.Draw(bl).text((8, (bh - 26) // 2), btxt, font=f_badge, fill=WHITE)
-    paste_a(canvas, bl, (MARGIN, 26))
+    paste_a(canvas, bl, (MARGIN, 18))
 
     out = img_path.rsplit(".", 1)[0] + "_card.png"
     canvas.convert("RGB").save(out, "PNG", quality=95)
@@ -679,15 +652,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("⏳ Анализирую товар...")
     img_path = f"/tmp/product_{uid}.jpg"
+    scene_path = f"/tmp/scene_{uid}.png"
     out_path = None
     try:
         photo = update.message.photo[-1]
         file  = await context.bot.get_file(photo.file_id)
         await file.download_to_drive(img_path)
-        await msg.edit_text("🎨 Создаю карточку...")
 
-        data     = analyze_product_image(img_path)
-        out_path = make_infographic(img_path, data)
+        await msg.edit_text("🔍 Определяю товар и пишу тексты...")
+        data = analyze_product_image(img_path)
+
+        await msg.edit_text("🎨 Генерирую дизайн сцены...")
+        scene_desc = data.get("scene_description", "")
+        bg_path = generate_scene_background(scene_desc) if scene_desc else None
+
+        await msg.edit_text("✨ Собираю карточку...")
+        out_path = make_infographic(img_path, data, scene_bg_path=bg_path)
         consume(uid)
 
         caption = (
@@ -711,7 +691,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🚨 Критическая ошибка API!\n`{type(e).__name__}: {e}`\n\n"
                 "Проверь баланс OpenAI и Railway Variables.")
     finally:
-        for p in [img_path, out_path]:
+        for p in [img_path, out_path, scene_path]:
             if p:
                 try: os.remove(p)
                 except OSError: pass
