@@ -239,28 +239,42 @@ def analyze_product_image(image_path: str) -> dict:
 
 
 # ── COLOR THEMES ─────────────────────────────────────────────────────────────────
+# overlay_rgb = цвет оверлея поверх размытого фото
+# overlay_a   = прозрачность оверлея (0=прозрачный фон, 255=полностью закрашен)
+# title_color = цвет заголовка
+# sub_color   = цвет подзаголовка
+# feat_bg     = фон карточки преимуществ
+# feat_text   = цвет текста в карточках
+# acc         = акцент (бейдж, полоска, номер)
 THEMES = {
-    "warm":    {"bg": (252, 246, 237), "bg2": (255, 232, 205),
-                "accent": (180, 75, 20), "accent2": (230, 135, 45),
-                "card": (255, 255, 255), "text": (30, 20, 10), "text2": (130, 80, 40)},
-    "cool":    {"bg": (240, 246, 255), "bg2": (210, 228, 255),
-                "accent": (30, 80, 190), "accent2": (60, 120, 230),
-                "card": (255, 255, 255), "text": (15, 25, 60), "text2": (50, 90, 170)},
-    "neutral": {"bg": (250, 250, 250), "bg2": (232, 232, 232),
-                "accent": (50, 50, 50),  "accent2": (110, 110, 110),
-                "card": (255, 255, 255), "text": (25, 25, 25), "text2": (90, 90, 90)},
-    "dark":    {"bg": (22, 22, 32),    "bg2": (14, 14, 24),
-                "accent": (205, 160, 70), "accent2": (240, 200, 100),
-                "card": (38, 38, 50),   "text": (242, 238, 225), "text2": (185, 170, 135)},
+    "warm": {
+        "overlay_rgb": (60, 28, 5),   "overlay_a": 165,
+        "title_color": (255, 248, 235), "sub_color": (255, 190, 100),
+        "feat_bg": (255, 255, 255, 200), "feat_text": (40, 20, 5),
+        "acc": (210, 90, 20), "acc2": (240, 150, 50),
+    },
+    "cool": {
+        "overlay_rgb": (8, 25, 65),    "overlay_a": 170,
+        "title_color": (230, 240, 255), "sub_color": (120, 180, 255),
+        "feat_bg": (255, 255, 255, 200), "feat_text": (10, 25, 60),
+        "acc": (40, 100, 220), "acc2": (80, 150, 255),
+    },
+    "neutral": {
+        "overlay_rgb": (25, 25, 25),   "overlay_a": 155,
+        "title_color": (250, 250, 250), "sub_color": (190, 190, 190),
+        "feat_bg": (255, 255, 255, 200), "feat_text": (20, 20, 20),
+        "acc": (80, 80, 80), "acc2": (140, 140, 140),
+    },
+    "dark": {
+        "overlay_rgb": (12, 10, 20),   "overlay_a": 180,
+        "title_color": (245, 225, 165), "sub_color": (200, 170, 100),
+        "feat_bg": (30, 25, 45, 220),  "feat_text": (240, 230, 200),
+        "acc": (210, 165, 65), "acc2": (245, 205, 100),
+    },
 }
 
 W, H = 1080, 1080
-
-
-def make_gradient(bg, bg2) -> Image.Image:
-    t    = np.linspace(0, 1, H)[:, np.newaxis]
-    rows = (np.array(bg, np.float32) * (1-t) + np.array(bg2, np.float32) * t).astype(np.uint8)
-    return Image.fromarray(np.broadcast_to(rows[:, np.newaxis, :], (H, W, 3)).copy(), "RGB").convert("RGBA")
+MARGIN = 44
 
 
 def paste_a(canvas, layer, xy):
@@ -297,116 +311,120 @@ def text_h(font):
     return b[3] - b[1]
 
 
-# ── INFOGRAPHIC ───────────────────────────────────────────────────────────────────
+def draw_text_shadow(draw, xy, text, font, fill, shadow_alpha=100):
+    x, y = xy
+    draw.text((x + 3, y + 3), text, font=font, fill=(0, 0, 0, shadow_alpha))
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+# ── INFOGRAPHIC — финальный дизайн как у конкурентов ─────────────────────────────
 def make_infographic(img_path: str, data: dict) -> str:
     title    = data.get("title", "Товар").upper()
     subtitle = data.get("subtitle", "")
     features = data.get("features", [])[:4]
     badge    = data.get("badge", "ХИТ")
-    cta      = data.get("cta", "Купить сейчас")
     t        = THEMES.get(data.get("color_theme", "warm"), THEMES["warm"])
 
-    is_dark = data.get("color_theme") == "dark"
-    acc, acc2 = t["accent"], t["accent2"]
+    acc  = t["acc"]
+    acc2 = t["acc2"]
+    tc   = (*t["title_color"], 255)
+    sc   = (*t["sub_color"], 230)
     WHITE = (255, 255, 255, 255)
 
-    # ── Фон: размытое фото товара + цветной оверлей (как у конкурентов) ──────────
+    # ── ФОН: фото товара сильно размыто + тёмный оверлей ─────────────────────────
     raw = Image.open(img_path).convert("RGB")
     rw, rh = raw.size
-    # Кадрируем по центру до квадрата, растягиваем на весь холст
     sq = min(rw, rh)
-    bg = raw.crop(((rw-sq)//2, (rh-sq)//2, (rw-sq)//2+sq, (rh-sq)//2+sq))
-    bg = bg.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(38))
-    # Цветной оверлей — тема warm/cool/neutral/dark
-    overlay_alpha = 210 if is_dark else 200
-    ov = Image.new("RGBA", (W, H), (*t["bg"], overlay_alpha))
+    bg = raw.crop(((rw - sq) // 2, (rh - sq) // 2, (rw - sq) // 2 + sq, (rh - sq) // 2 + sq))
+    bg = bg.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(45))
+    ov = Image.new("RGBA", (W, H), (*t["overlay_rgb"], t["overlay_a"]))
     canvas = Image.alpha_composite(bg.convert("RGBA"), ov)
-    draw   = ImageDraw.Draw(canvas)
 
-    # ── Шрифты ───────────────────────────────────────────────────────────────────
-    f_title  = get_font("bold",    60)
-    f_title2 = get_font("bold",    48)
-    f_title3 = get_font("bold",    40)
-    f_sub    = get_font("regular", 30)
-    f_feat   = get_font("bold",    26)
-    f_feat2  = get_font("regular", 24)
-    f_badge  = get_font("bold",    26)
-    f_cta    = get_font("bold",    26)
-    f_num    = get_font("bold",    22)
+    # Лёгкий градиент снизу — затемняем нижнюю зону для читаемости карточек
+    grad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd   = ImageDraw.Draw(grad)
+    for i in range(400):
+        alpha = int(i * 0.32)
+        gd.line([(0, H - i), (W, H - i)], fill=(0, 0, 0, alpha))
+    canvas = Image.alpha_composite(canvas, grad)
 
-    # ── Заголовок — авто-размер чтобы влезало в 1-2 строки ──────────────────────
-    MARGIN = 40
-    for f_t in (f_title, f_title2, f_title3):
-        title_lines = wrap(title, f_t, W - MARGIN * 2)
-        if len(title_lines) <= 2:
+    draw = ImageDraw.Draw(canvas)
+
+    # ── ЗАГОЛОВОК — огромный, занимает верхние 35% ──────────────────────────────
+    # Авто-подбор размера: стартуем с 96px, уменьшаем до влезания в 3 строки
+    title_max_w = W - MARGIN * 2
+    f_title_use = None
+    title_lines = []
+    for size in (96, 84, 72, 60, 50):
+        f_t = get_font("bold", size)
+        lines = wrap(title, f_t, title_max_w)
+        if len(lines) <= 3:
             f_title_use = f_t
+            title_lines = lines
             break
+    if not f_title_use:
+        f_title_use = get_font("bold", 50)
+        title_lines = wrap(title, f_title_use, title_max_w)
 
-    ty = 90
+    # Рисуем заголовок, центрируем
+    ty = 70
     th = text_h(f_title_use)
-    for line in title_lines[:2]:
+    for line in title_lines[:3]:
         x = centered_x(line, f_title_use)
-        # Тень для читаемости
-        draw.text((x+2, ty+2), line, font=f_title_use, fill=(0, 0, 0, 80))
-        draw.text((x, ty), line, font=f_title_use, fill=(*t["text"], 255))
-        ty += th + 8
+        draw_text_shadow(draw, (x, ty), line, f_title_use, tc, shadow_alpha=160)
+        ty += th + 10
+    ty += 14
 
     # Подзаголовок
-    ty += 6
+    f_sub = get_font("regular", 34)
     if subtitle:
-        sub_lines = wrap(subtitle, f_sub, W - MARGIN * 2)
-        for line in sub_lines[:1]:
+        for line in wrap(subtitle, f_sub, title_max_w)[:1]:
             x = centered_x(line, f_sub)
-            draw.text((x, ty), line, font=f_sub, fill=(*acc2, 230))
-            ty += text_h(f_sub) + 4
-    ty += 18
+            draw_text_shadow(draw, (x, ty), line, f_sub, sc, shadow_alpha=120)
+            ty += text_h(f_sub) + 6
+    ty += 16
 
-    # ── Фото товара (чёткое, по центру) ─────────────────────────────────────────
-    # Оставшееся место: от ty до верха feature-блока
-    # Feature блок займёт ~280px снизу, badge 80px сверху уже учтён
-    available = H - ty - 300
-    PHOTO_SIZE = min(420, max(280, available))
+    # ── ФОТО ТОВАРА — без тяжёлой белой рамки, с мягким свечением ────────────────
+    remaining  = H - ty - 310   # 310px для feature-блока снизу
+    PHOTO_SIZE = max(260, min(380, remaining))
 
     prod = Image.open(img_path).convert("RGBA")
     pw, ph = prod.size
-    sq2 = min(pw, ph)
-    prod = prod.crop(((pw-sq2)//2, (ph-sq2)//2, (pw-sq2)//2+sq2, (ph-sq2)//2+sq2))
-    prod = prod.resize((PHOTO_SIZE, PHOTO_SIZE), Image.LANCZOS)
+    sq2   = min(pw, ph)
+    prod  = prod.crop(((pw - sq2) // 2, (ph - sq2) // 2,
+                       (pw - sq2) // 2 + sq2, (ph - sq2) // 2 + sq2))
+    prod  = prod.resize((PHOTO_SIZE, PHOTO_SIZE), Image.LANCZOS)
 
     px = (W - PHOTO_SIZE) // 2
     py = ty
 
-    # Тень под фото
-    sh_img = Image.new("RGBA", (PHOTO_SIZE + 60, PHOTO_SIZE + 60), (0, 0, 0, 0))
-    ImageDraw.Draw(sh_img).rounded_rectangle(
-        [15, 15, PHOTO_SIZE + 45, PHOTO_SIZE + 45], radius=30, fill=(0, 0, 0, 70)
+    # Мягкое свечение вокруг фото (без белой рамки)
+    glow = Image.new("RGBA", (PHOTO_SIZE + 80, PHOTO_SIZE + 80), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).rounded_rectangle(
+        [20, 20, PHOTO_SIZE + 60, PHOTO_SIZE + 60], radius=36, fill=(255, 255, 255, 50)
     )
-    sh_img = sh_img.filter(ImageFilter.GaussianBlur(22))
-    paste_a(canvas, sh_img, (px - 30, py - 5))
+    glow = glow.filter(ImageFilter.GaussianBlur(28))
+    paste_a(canvas, glow, (px - 40, py - 20))
 
-    # Белая карточка под фото
-    paste_a(canvas, rlayer(PHOTO_SIZE + 16, PHOTO_SIZE + 16, 26,
-                            fill=(*t["card"][:3], 250)), (px - 8, py - 8))
-
-    # Фото с скруглёнными углами
+    # Фото скруглёнными углами — прямо на фон (без белой карточки)
     photo_mask = Image.new("L", (PHOTO_SIZE, PHOTO_SIZE), 0)
     ImageDraw.Draw(photo_mask).rounded_rectangle(
-        [0, 0, PHOTO_SIZE, PHOTO_SIZE], radius=22, fill=255
+        [0, 0, PHOTO_SIZE, PHOTO_SIZE], radius=26, fill=255
     )
     canvas.paste(prod, (px, py), photo_mask)
 
-    # ── Блоки преимуществ (2×2) ──────────────────────────────────────────────────
-    FEAT_TOP = py + PHOTO_SIZE + 24
-    COL_W    = (W - MARGIN * 2 - 16) // 2   # ~490
-    ROW_H    = min(115, (H - FEAT_TOP - 20) // 2 - 10)
-    GAP      = 12
+    # ── ПРЕИМУЩЕСТВА — лёгкие полупрозрачные карточки ────────────────────────────
+    FEAT_TOP = py + PHOTO_SIZE + 28
+    COL_W    = (W - MARGIN * 2 - 14) // 2
+    ROW_H    = max(90, min(130, (H - FEAT_TOP - 24) // 2 - 10))
+    GAP      = 14
     LEFT_X   = MARGIN
     RIGHT_X  = MARGIN + COL_W + GAP
 
-    # Цвета иконок
-    IC = [acc, acc2,
-          tuple(min(255, int(c * 1.15)) for c in acc),
-          tuple(min(255, int(c * 0.85)) for c in acc2)]
+    f_feat = get_font("bold",    27)
+    f_num  = get_font("bold",    20)
+
+    feat_fill = t["feat_bg"] if len(t["feat_bg"]) == 4 else (*t["feat_bg"][:3], 200)
 
     positions = [
         (LEFT_X,  FEAT_TOP),
@@ -419,67 +437,50 @@ def make_infographic(img_path: str, data: dict) -> str:
         if i >= len(positions):
             break
         fx, fy = positions[i]
-        ic = IC[i % len(IC)]
 
-        # Тень карточки
-        paste_a(canvas, rlayer(COL_W + 6, ROW_H + 6, 20, (0, 0, 0, 50), blur=10), (fx - 3, fy + 2))
+        # Тонкая тень
+        paste_a(canvas, rlayer(COL_W + 4, ROW_H + 4, 18,
+                                (0, 0, 0, 55), blur=12), (fx - 2, fy + 3))
 
-        # Карточка
-        card = rlayer(COL_W, ROW_H, 20,
-                      fill=(*t["card"][:3], 248),
-                      outline=(*ic, 100), ow=2)
-        cd = ImageDraw.Draw(card)
+        # Полупрозрачная карточка
+        card = rlayer(COL_W, ROW_H, 18, fill=feat_fill)
+        cd   = ImageDraw.Draw(card)
 
-        # Цветная полоска слева
-        cd.rounded_rectangle([0, 0, 7, ROW_H], radius=4, fill=(*ic, 255))
+        # Цветная полоска слева (акцент)
+        cd.rounded_rectangle([0, 0, 6, ROW_H], radius=3, fill=(*acc, 255))
 
-        # Круглая иконка с номером (рисуем вручную — без emoji)
-        ICON_R = 24
-        ICX    = 18 + ICON_R  # центр круга по X
-        ICY    = ROW_H // 2
-        cd.ellipse([ICX - ICON_R, ICY - ICON_R, ICX + ICON_R, ICY + ICON_R],
-                   fill=(*ic, 220))
-        num_str = str(i + 1)
-        nb = f_num.getbbox(num_str)
+        # Круг с номером
+        IR  = 22
+        ICX = 14 + IR
+        ICY = ROW_H // 2
+        cd.ellipse([ICX - IR, ICY - IR, ICX + IR, ICY + IR], fill=(*acc, 240))
+        ns  = str(i + 1)
+        nb  = f_num.getbbox(ns)
         nw, nh = nb[2] - nb[0], nb[3] - nb[1]
-        cd.text((ICX - nw // 2, ICY - nh // 2 - 1), num_str, font=f_num, fill=(255, 255, 255, 255))
+        cd.text((ICX - nw // 2, ICY - nh // 2 - 1), ns, font=f_num, fill=WHITE)
 
-        # Текст преимущества
-        TEXT_X  = ICX + ICON_R + 14
-        max_txt = COL_W - TEXT_X - 12
-        lines   = wrap(feat, f_feat, max_txt)
-        if not lines:
-            lines = [feat[:20]]
-        lh = text_h(f_feat) + 4
+        # Текст
+        TX     = ICX + IR + 12
+        max_tw = COL_W - TX - 10
+        flines = wrap(feat, f_feat, max_tw) or [feat[:22]]
+        lh     = text_h(f_feat) + 5
+        total  = min(len(flines), 2) * lh
+        tty    = (ROW_H - total) // 2
 
-        # Если не влезает в 2 строки bold — уменьшаем
-        if len(lines) > 2:
-            lines = wrap(feat, f_feat2, max_txt)
-
-        total_h = min(len(lines), 2) * lh
-        tty = (ROW_H - total_h) // 2 - 2
-
-        for line in lines[:2]:
-            cd.text((TEXT_X, tty), line, font=f_feat, fill=(*t["text"], 240))
+        for line in flines[:2]:
+            cd.text((TX, tty), line, font=f_feat, fill=(*t["feat_text"], 245))
             tty += lh
 
         paste_a(canvas, card, (fx, fy))
 
-    # ── Бейдж (верх-лево) ─────────────────────────────────────────────────────────
-    btxt = f"  {badge}  "
-    bw   = int(f_badge.getlength(btxt)) + 18
-    bh   = 46
-    bl   = rlayer(bw, bh, 12, fill=(210, 40, 40, 255))
-    ImageDraw.Draw(bl).text((9, (bh - 26) // 2), btxt, font=f_badge, fill=WHITE)
-    paste_a(canvas, bl, (MARGIN, 30))
-
-    # ── CTA (верх-право) ──────────────────────────────────────────────────────────
-    ctxt = f"  {cta}  "
-    cw   = int(f_cta.getlength(ctxt)) + 22
-    ch   = 46
-    cl   = rlayer(cw, ch, 14, fill=(*acc, 240), outline=(*acc2, 180), ow=2)
-    ImageDraw.Draw(cl).text((11, (ch - 26) // 2), ctxt, font=f_cta, fill=WHITE)
-    paste_a(canvas, cl, (W - cw - MARGIN, 30))
+    # ── БЕЙДЖ (верх-лево) ─────────────────────────────────────────────────────────
+    f_badge = get_font("bold", 26)
+    btxt    = f"  {badge}  "
+    bw      = int(f_badge.getlength(btxt)) + 16
+    bh      = 44
+    bl      = rlayer(bw, bh, 11, fill=(205, 35, 35, 255))
+    ImageDraw.Draw(bl).text((8, (bh - 26) // 2), btxt, font=f_badge, fill=WHITE)
+    paste_a(canvas, bl, (MARGIN, 26))
 
     out = img_path.rsplit(".", 1)[0] + "_card.png"
     canvas.convert("RGB").save(out, "PNG", quality=95)
