@@ -9,12 +9,16 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-from telegram import Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update, LabeledPrice,
+    InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, KeyboardButton,
+)
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes, filters,
 )
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionError
 
 # ── CONFIG ───────────────────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8728265878:AAH7pdsOpSO1x4eDrnY9pKaFA5IYS7DlU6E")
@@ -22,51 +26,48 @@ OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY", "sk-ВСТАВЬ_КЛЮЧ")
 YOOKASSA_TOKEN     = os.getenv("YOOKASSA_TOKEN", "")
 CRYPTO_BOT_TOKEN   = os.getenv("CRYPTO_BOT_TOKEN", "")
 CRYPTO_BOT_API     = "https://pay.crypt.bot/api"
-
-# Владелец — бесплатный безлимит. Добавь свой Telegram ID в Railway Variables.
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+OWNER_ID           = int(os.getenv("OWNER_ID", "0"))
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 logging.basicConfig(level=logging.INFO)
+
+# ── ПРОМОКОДЫ ────────────────────────────────────────────────────────────────────
+# Формат: "КОД": {"credits": N, "used_by": set()}
+# credits=-1 → добавить к безлимиту на 7 дней
+PROMO_CODES: dict[str, dict] = {
+    "SORRY5":   {"credits": 5,  "used_by": set()},   # для рассылки при сбоях
+    "WELCOME3": {"credits": 3,  "used_by": set()},   # приветственный
+}
 
 # ── ТАРИФНЫЕ ПЛАНЫ ───────────────────────────────────────────────────────────────
 FREE_CREDITS = 3
 
 PLANS = {
     "start": {
-        "name": "Старт",
-        "emoji": "🚀",
-        "credits": 10,
-        "duration_days": None,
-        "price_rub": 490,
-        "price_usdt": 5.0,
-        "price_ton": 50,
+        "name": "Старт", "emoji": "🚀",
+        "credits": 10, "duration_days": None,
+        "price_rub": 490, "price_usdt": 5.0, "price_ton": 50,
         "description": "10 карточек",
     },
     "pro": {
-        "name": "Про",
-        "emoji": "💎",
-        "credits": 30,
-        "duration_days": None,
-        "price_rub": 990,
-        "price_usdt": 10.0,
-        "price_ton": 100,
+        "name": "Про", "emoji": "💎",
+        "credits": 30, "duration_days": None,
+        "price_rub": 990, "price_usdt": 10.0, "price_ton": 100,
         "description": "30 карточек",
     },
     "unlimited": {
-        "name": "Безлимит",
-        "emoji": "♾️",
-        "credits": -1,
-        "duration_days": 30,
-        "price_rub": 9980,
-        "price_usdt": 100.0,
-        "price_ton": 1000,
+        "name": "Безлимит", "emoji": "♾️",
+        "credits": -1, "duration_days": 30,
+        "price_rub": 9980, "price_usdt": 100.0, "price_ton": 1000,
         "description": "Безлимит на 30 дней",
     },
 }
 
 # ── ХРАНИЛИЩЕ ────────────────────────────────────────────────────────────────────
 user_data: dict[int, dict] = {}
+
+# Счётчик ошибок для авто-оповещения владельца
+_error_counts: dict[str, int] = {}
 
 
 def get_user(uid: int) -> dict:
@@ -102,6 +103,47 @@ def credits_display(uid: int) -> str:
         until = u["unlimited_until"].strftime("%d.%m.%Y")
         return f"♾️ Безлимит до {until}"
     return f"💡 Осталось карточек: *{u['credits']}*"
+
+
+def apply_plan(uid: int, plan_id: str):
+    u = get_user(uid)
+    p = PLANS[plan_id]
+    if p["credits"] == -1:
+        days = p["duration_days"] or 30
+        now  = datetime.now(timezone.utc)
+        base = u["unlimited_until"] if (u["unlimited_until"] and u["unlimited_until"] > now) else now
+        u["unlimited_until"] = base + timedelta(days=days)
+    else:
+        u["credits"] = u.get("credits", 0) + p["credits"]
+
+
+# ── ПРОМОКОД ЛОГИКА ──────────────────────────────────────────────────────────────
+def apply_promo(uid: int, code: str) -> tuple[bool, str]:
+    """Возвращает (успех, сообщение)"""
+    code = code.strip().upper()
+    if code not in PROMO_CODES:
+        return False, "❌ Промокод не найден. Проверь правильность написания."
+    promo = PROMO_CODES[code]
+    if uid in promo["used_by"]:
+        return False, "⚠️ Ты уже активировал этот промокод."
+    promo["used_by"].add(uid)
+    credits = promo["credits"]
+    get_user(uid)["credits"] = get_user(uid).get("credits", 0) + credits
+    return True, (
+        f"🎉 Промокод *{code}* активирован!\n"
+        f"Добавлено *{credits} карточек*.\n\n"
+        f"{credits_display(uid)}"
+    )
+
+
+# ── УВЕДОМЛЕНИЕ ВЛАДЕЛЬЦА ─────────────────────────────────────────────────────────
+async def notify_owner(context: ContextTypes.DEFAULT_TYPE, text: str):
+    if OWNER_ID:
+        try:
+            await context.bot.send_message(OWNER_ID, f"⚠️ *Системное уведомление*\n\n{text}",
+                                            parse_mode="Markdown")
+        except Exception:
+            pass
 
 
 # ── FONTS ────────────────────────────────────────────────────────────────────────
@@ -255,7 +297,7 @@ def text_h(font):
     return b[3] - b[1]
 
 
-# ── INFOGRAPHIC — новый дизайн (как у конкурентов) ───────────────────────────────
+# ── INFOGRAPHIC ───────────────────────────────────────────────────────────────────
 def make_infographic(img_path: str, data: dict) -> str:
     title    = data.get("title", "Товар").upper()
     subtitle = data.get("subtitle", "")
@@ -267,28 +309,21 @@ def make_infographic(img_path: str, data: dict) -> str:
     is_dark = data.get("color_theme") == "dark"
     acc, acc2 = t["accent"], t["accent2"]
     WHITE = (255, 255, 255, 255)
-    CARD  = (*t["card"][:3], 255)
 
-    # ── Фон ──────────────────────────────────────────────────────────
     canvas = make_gradient(t["bg"], t["bg2"])
     draw   = ImageDraw.Draw(canvas)
 
-    # Мягкий декоративный круг в углу
     draw.ellipse([-140, -140, 340, 340], fill=(*acc2, 18))
     draw.ellipse([780, 720, 1220, 1220], fill=(*acc,  14))
 
-    # ── Шрифты ───────────────────────────────────────────────────────
     f_title  = get_font("bold",    64)
     f_title2 = get_font("bold",    52)
     f_sub    = get_font("regular", 32)
     f_feat   = get_font("bold",    24)
-    f_feat2  = get_font("regular", 22)
     f_badge  = get_font("bold",    26)
     f_cta    = get_font("bold",    26)
     f_wm     = get_font("regular", 18)
 
-    # ── Заголовок (сверху) ────────────────────────────────────────────
-    # Пробуем большой шрифт, если не влезает — уменьшаем
     title_lines = wrap(title, f_title, W - 80)
     if len(title_lines) > 2:
         f_title_use = f_title2
@@ -304,7 +339,6 @@ def make_infographic(img_path: str, data: dict) -> str:
         draw.text((x, ty), line, font=f_title_use, fill=(*t["text"], 255))
         ty += text_h(f_title_use) + 8
 
-    # Подзаголовок
     if subtitle:
         sub_lines = wrap(subtitle, f_sub, W - 120)
         for line in sub_lines[:2]:
@@ -313,8 +347,6 @@ def make_infographic(img_path: str, data: dict) -> str:
             ty += text_h(f_sub) + 4
     ty += 12
 
-    # ── Фото товара (центр) ───────────────────────────────────────────
-    # Зона для фото: от ty до ~ty+480
     PHOTO_SIZE = min(480, H - ty - 280)
     prod = Image.open(img_path).convert("RGBA")
     pw, ph = prod.size
@@ -325,27 +357,19 @@ def make_infographic(img_path: str, data: dict) -> str:
     px = (W - PHOTO_SIZE) // 2
     py = ty
 
-    # Тень
     sh = Image.new("RGBA", (PHOTO_SIZE+50, PHOTO_SIZE+50), (0,0,0,0))
     ImageDraw.Draw(sh).rounded_rectangle([10, 10, PHOTO_SIZE+40, PHOTO_SIZE+40],
                                           radius=28, fill=(0,0,0,55))
     sh = sh.filter(ImageFilter.GaussianBlur(20))
     paste_a(canvas, sh, (px-25, py-5))
-
-    # Белая подложка
     paste_a(canvas, rlayer(PHOTO_SIZE+20, PHOTO_SIZE+20, 24,
                             fill=(*t["card"][:3], 245)), (px-10, py-10))
-
-    # Фото с маской (скруглённый квадрат)
     mask = Image.new("L", (PHOTO_SIZE, PHOTO_SIZE), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, PHOTO_SIZE, PHOTO_SIZE], radius=20, fill=255)
     canvas.paste(prod, (px, py), mask)
 
     feat_top = py + PHOTO_SIZE + 22
-
-    # ── 4 блока с преимуществами (2×2 сетка внизу) ───────────────────
-    # Каждый блок занимает половину ширины минус отступы
-    COL_W   = (W - 60) // 2   # ~510
+    COL_W   = (W - 60) // 2
     ROW_H   = 90
     GAP     = 14
     LEFT_X  = 22
@@ -368,17 +392,13 @@ def make_infographic(img_path: str, data: dict) -> str:
         fx, fy = positions[i]
         ic = ICON_COLORS[i % len(ICON_COLORS)]
 
-        # Карточка
         paste_a(canvas, rlayer(COL_W+4, ROW_H+4, 18, (0,0,0,40), blur=8), (fx-2, fy))
         card = rlayer(COL_W, ROW_H, 18,
                        fill=(*t["card"][:3], 250),
                        outline=(*ic, 120), ow=2)
         cd = ImageDraw.Draw(card)
-
-        # Цветная полоска слева
         cd.rounded_rectangle([0, 0, 8, ROW_H], radius=4, fill=(*ic, 255))
 
-        # Иконка в цветном кружке
         icon_size = 52
         icon_layer = rlayer(icon_size, icon_size, icon_size//2, fill=(*ic, 30))
         icd = ImageDraw.Draw(icon_layer)
@@ -388,7 +408,6 @@ def make_infographic(img_path: str, data: dict) -> str:
         icd.text(((icon_size-sw)//2, (icon_size-sh_sym)//2 - 2), sym, font=f_feat, fill=(*ic, 255))
         card.paste(icon_layer, (14, (ROW_H-icon_size)//2), icon_layer.split()[3])
 
-        # Текст
         TEXT_X  = 14 + icon_size + 14
         max_txt = COL_W - TEXT_X - 12
         lines   = wrap(feat, f_feat, max_txt)
@@ -402,7 +421,6 @@ def make_infographic(img_path: str, data: dict) -> str:
 
         paste_a(canvas, card, (fx, fy))
 
-    # ── Бейдж (верх лево) ────────────────────────────────────────────
     btxt = f"  {badge}  "
     bw   = int(f_badge.getlength(btxt)) + 18
     bh   = 46
@@ -410,7 +428,6 @@ def make_infographic(img_path: str, data: dict) -> str:
     ImageDraw.Draw(bl).text((9, (bh-26)//2), btxt, font=f_badge, fill=WHITE)
     paste_a(canvas, bl, (32, 32))
 
-    # ── CTA кнопка (верх право) ──────────────────────────────────────
     ctxt = f"  {cta}  "
     cw   = int(f_cta.getlength(ctxt)) + 22
     ch   = 46
@@ -418,7 +435,6 @@ def make_infographic(img_path: str, data: dict) -> str:
     ImageDraw.Draw(cl).text((11, (ch-26)//2), ctxt, font=f_cta, fill=WHITE)
     paste_a(canvas, cl, (W - cw - 32, 32))
 
-    # ── Вотермарк снизу ──────────────────────────────────────────────
     wm = "AI Infografika Bot"
     draw = ImageDraw.Draw(canvas)
     draw.text((W//2 - int(f_wm.getlength(wm))//2, H - 26),
@@ -430,6 +446,18 @@ def make_infographic(img_path: str, data: dict) -> str:
 
 
 # ── КЛАВИАТУРЫ ───────────────────────────────────────────────────────────────────
+def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Постоянное меню снизу экрана."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton("📸 Сгенерировать карточку"), KeyboardButton("💡 Мои карточки")],
+            [KeyboardButton("🛒 Купить"),                 KeyboardButton("🎁 Промокод")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Отправь фото товара или выбери действие...",
+    )
+
+
 def plans_keyboard():
     rows = []
     for pid, p in PLANS.items():
@@ -443,9 +471,9 @@ def plans_keyboard():
 def payment_keyboard(plan_id: str):
     p = PLANS[plan_id]
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"💳 Картой  {p['price_rub']} ₽", callback_data=f"pay_card_{plan_id}")],
-        [InlineKeyboardButton(f"₮ USDT  {p['price_usdt']}$",  callback_data=f"pay_crypto_{plan_id}_USDT"),
-         InlineKeyboardButton(f"💎 TON  {p['price_ton']}",    callback_data=f"pay_crypto_{plan_id}_TON")],
+        [InlineKeyboardButton(f"💳 Картой  {p['price_rub']} ₽",   callback_data=f"pay_card_{plan_id}")],
+        [InlineKeyboardButton(f"₮ USDT  {p['price_usdt']}$",      callback_data=f"pay_crypto_{plan_id}_USDT"),
+         InlineKeyboardButton(f"💎 TON  {p['price_ton']}",        callback_data=f"pay_crypto_{plan_id}_TON")],
         [InlineKeyboardButton("← Назад", callback_data="buy")],
     ])
 
@@ -481,32 +509,47 @@ async def check_crypto_invoice(invoice_id: int) -> str:
     return "unknown"
 
 
-# ── APPLY PLAN ───────────────────────────────────────────────────────────────────
-def apply_plan(uid: int, plan_id: str):
-    u = get_user(uid)
-    p = PLANS[plan_id]
-    if p["credits"] == -1:
-        days = p["duration_days"] or 30
-        now  = datetime.now(timezone.utc)
-        base = u["unlimited_until"] if (u["unlimited_until"] and u["unlimited_until"] > now) else now
-        u["unlimited_until"] = base + timedelta(days=days)
-    else:
-        u["credits"] = u.get("credits", 0) + p["credits"]
+# ── ДРУЖЕЛЮБНЫЕ СООБЩЕНИЯ ОБ ОШИБКАХ ─────────────────────────────────────────────
+def user_error_message(e: Exception) -> str:
+    if isinstance(e, RateLimitError):
+        return (
+            "⚠️ *Сервис временно перегружен* — мы уже знаем об этом и чиним.\n\n"
+            "Попробуй через 5–10 минут. В качестве извинения введи промокод "
+            "*SORRY5* командой /promo и получи 5 карточек бесплатно! 🎁"
+        )
+    if isinstance(e, AuthenticationError):
+        return (
+            "🔧 *Технические работы* — сервис временно недоступен.\n\n"
+            "Мы уже чиним! Попробуй позже, а пока держи промокод "
+            "*SORRY5* — /promo для 5 бесплатных карточек."
+        )
+    if isinstance(e, APIConnectionError):
+        return (
+            "📡 *Нет связи с сервером* — проверяем соединение.\n\n"
+            "Попробуй ещё раз через пару минут."
+        )
+    return (
+        "😔 *Не удалось создать карточку* — что-то пошло не так на нашей стороне.\n\n"
+        "Попробуй отправить фото ещё раз. Если ошибка повторяется — "
+        "напиши нам, мы разберёмся!"
+    )
+
+
+def is_critical_error(e: Exception) -> bool:
+    return isinstance(e, (RateLimitError, AuthenticationError))
 
 
 # ── HANDLERS ─────────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     get_user(uid)
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🛒 Купить карточки", callback_data="buy"),
-        InlineKeyboardButton("ℹ️ Как работает",   callback_data="how"),
-    ]])
     await update.message.reply_text(
         "👋 *Привет!* Я создаю профессиональные карточки товаров для маркетплейсов.\n\n"
         "📸 Пришли фото товара — получишь карточку 1080×1080 для WB / OZON!\n\n"
-        f"🎁 У тебя *{FREE_CREDITS} бесплатных* карточки.",
-        parse_mode="Markdown", reply_markup=kb,
+        f"🎁 У тебя *{FREE_CREDITS} бесплатных* карточки.\n\n"
+        "Выбери действие в меню ниже ↓",
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -514,10 +557,11 @@ async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🛒 *Выбери тариф:*\n\n"
         "🆓 Бесплатно — 3 карточки\n"
-        "🚀 Старт — 10 карточек | 490 ₽ / 5 USDT / 50 TON\n"
-        "💎 Про — 30 карточек | 990 ₽ / 10 USDT / 100 TON\n"
-        "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽ / 100 USDT / 1 000 TON",
-        parse_mode="Markdown", reply_markup=plans_keyboard(),
+        "🚀 Старт — 10 карточек | 490 ₽ / 5 USDT\n"
+        "💎 Про — 30 карточек | 990 ₽ / 10 USDT\n"
+        "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽ / 100 USDT",
+        parse_mode="Markdown",
+        reply_markup=plans_keyboard(),
     )
 
 
@@ -525,23 +569,78 @@ async def cmd_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(credits_display(update.effective_user.id), parse_mode="Markdown")
 
 
+async def cmd_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда: /promo КОД  или кнопка 🎁 Промокод"""
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "🎁 *Промокод*\n\n"
+            "Введи команду в формате:\n`/promo ТВОЙКОД`\n\n"
+            "Пример: `/promo SORRY5`",
+            parse_mode="Markdown",
+        )
+        return
+    code = args[0]
+    ok, msg = apply_promo(update.effective_user.id, code)
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def cmd_admin_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для владельца: /addpromo КОД КОЛИЧЕСТВО"""
+    if update.effective_user.id != OWNER_ID:
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Использование: /addpromo КОД КОЛИЧЕСТВО\nПример: /addpromo PROMO10 10")
+        return
+    code    = args[0].upper()
+    try:
+        credits = int(args[1])
+    except ValueError:
+        await update.message.reply_text("Количество должно быть числом.")
+        return
+    PROMO_CODES[code] = {"credits": credits, "used_by": set()}
+    await update.message.reply_text(f"✅ Промокод *{code}* на *{credits} карточек* создан.", parse_mode="Markdown")
+
+
+async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для владельца: /broadcast ТЕКСТ — рассылка всем пользователям."""
+    if update.effective_user.id != OWNER_ID:
+        return
+    text = " ".join(context.args)
+    if not text:
+        await update.message.reply_text("Использование: /broadcast ТЕКСТ СООБЩЕНИЯ")
+        return
+    sent, failed = 0, 0
+    for uid in list(user_data.keys()):
+        try:
+            await context.bot.send_message(uid, text, parse_mode="Markdown")
+            sent += 1
+        except Exception:
+            failed += 1
+    await update.message.reply_text(f"📨 Отправлено: {sent}, не доставлено: {failed}")
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     get_user(uid)
     if not has_access(uid):
         await update.message.reply_text(
-            "😔 Карточки закончились. Купи пакет и продолжай:",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🛒 Купить карточки", callback_data="buy"),
-            ]]),
+            "😔 *Карточки закончились.*\n\nКупи пакет или активируй промокод:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🛒 Купить карточки", callback_data="buy")],
+                [InlineKeyboardButton("🎁 Ввести промокод", callback_data="promo_input")],
+            ]),
         )
         return
 
     msg = await update.message.reply_text("⏳ Анализирую товар через GPT-4o...")
+    img_path = f"/tmp/product_{uid}.jpg"
+    out_path = None
     try:
-        photo    = update.message.photo[-1]
-        file     = await context.bot.get_file(photo.file_id)
-        img_path = f"/tmp/product_{uid}.jpg"
+        photo = update.message.photo[-1]
+        file  = await context.bot.get_file(photo.file_id)
         await file.download_to_drive(img_path)
         await msg.edit_text("🎨 Создаю карточку...")
 
@@ -556,16 +655,49 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + f"\n\n{credits_display(uid)}"
         )
         with open(out_path, "rb") as f:
-            await update.message.reply_photo(f, caption=caption, parse_mode="Markdown")
-
+            await update.message.reply_photo(f, caption=caption, parse_mode="Markdown",
+                                              reply_markup=main_menu_keyboard())
         await msg.delete()
-        for p in (img_path, out_path):
-            try: os.remove(p)
-            except OSError: pass
 
     except Exception as e:
         logging.exception(e)
-        await msg.edit_text(f"❌ Ошибка: {e}")
+        err_text = user_error_message(e)
+        await msg.edit_text(err_text, parse_mode="Markdown")
+        # Оповещаем владельца при критических ошибках
+        if is_critical_error(e):
+            await notify_owner(context,
+                f"🚨 Критическая ошибка API!\n`{type(e).__name__}: {e}`\n\n"
+                "Проверь баланс OpenAI и Railway Variables.")
+    finally:
+        for p in [img_path, out_path]:
+            if p:
+                try: os.remove(p)
+                except OSError: pass
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает кнопки постоянного меню."""
+    text = update.message.text
+    uid  = update.effective_user.id
+
+    if text == "📸 Сгенерировать карточку":
+        await update.message.reply_text(
+            "📸 Отправь фото товара — я создам карточку для маркетплейса!",
+        )
+    elif text == "💡 Мои карточки":
+        await update.message.reply_text(
+            credits_display(uid), parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🛒 Пополнить", callback_data="buy"),
+            ]]),
+        )
+    elif text == "🛒 Купить":
+        await cmd_buy(update, context)
+    elif text == "🎁 Промокод":
+        await update.message.reply_text(
+            "🎁 *Введи промокод командой:*\n\n`/promo ТВОЙКОД`\n\nПример: `/promo SORRY5`",
+            parse_mode="Markdown",
+        )
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -582,6 +714,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💎 Про — 30 карточек | 990 ₽ / 10 USDT\n"
             "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽ / 100 USDT",
             parse_mode="Markdown", reply_markup=plans_keyboard(),
+        )
+        return
+
+    if d == "promo_input":
+        await q.message.reply_text(
+            "🎁 Введи промокод:\n\n`/promo ТВОЙКОД`",
+            parse_mode="Markdown",
         )
         return
 
@@ -639,8 +778,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if d.startswith("check_"):
-        inv_id  = int(d[6:])
-        pid     = get_user(uid)["pending"].get(str(inv_id))
+        inv_id = int(d[6:])
+        pid    = get_user(uid)["pending"].get(str(inv_id))
         if not pid:
             await q.message.reply_text("❌ Счёт не найден.")
             return
@@ -693,11 +832,15 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def main():
     download_fonts()
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start",   cmd_start))
-    app.add_handler(CommandHandler("buy",     cmd_buy))
-    app.add_handler(CommandHandler("credits", cmd_credits))
+    app.add_handler(CommandHandler("start",     cmd_start))
+    app.add_handler(CommandHandler("buy",       cmd_buy))
+    app.add_handler(CommandHandler("credits",   cmd_credits))
+    app.add_handler(CommandHandler("promo",     cmd_promo))
+    app.add_handler(CommandHandler("addpromo",  cmd_admin_promo))
+    app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     logging.info("Bot started.")
