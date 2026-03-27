@@ -310,135 +310,176 @@ def make_infographic(img_path: str, data: dict) -> str:
     acc, acc2 = t["accent"], t["accent2"]
     WHITE = (255, 255, 255, 255)
 
-    canvas = make_gradient(t["bg"], t["bg2"])
+    # ── Фон: размытое фото товара + цветной оверлей (как у конкурентов) ──────────
+    raw = Image.open(img_path).convert("RGB")
+    rw, rh = raw.size
+    # Кадрируем по центру до квадрата, растягиваем на весь холст
+    sq = min(rw, rh)
+    bg = raw.crop(((rw-sq)//2, (rh-sq)//2, (rw-sq)//2+sq, (rh-sq)//2+sq))
+    bg = bg.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(38))
+    # Цветной оверлей — тема warm/cool/neutral/dark
+    overlay_alpha = 210 if is_dark else 200
+    ov = Image.new("RGBA", (W, H), (*t["bg"], overlay_alpha))
+    canvas = Image.alpha_composite(bg.convert("RGBA"), ov)
     draw   = ImageDraw.Draw(canvas)
 
-    draw.ellipse([-140, -140, 340, 340], fill=(*acc2, 18))
-    draw.ellipse([780, 720, 1220, 1220], fill=(*acc,  14))
-
-    f_title  = get_font("bold",    64)
-    f_title2 = get_font("bold",    52)
-    f_sub    = get_font("regular", 32)
-    f_feat   = get_font("bold",    24)
+    # ── Шрифты ───────────────────────────────────────────────────────────────────
+    f_title  = get_font("bold",    60)
+    f_title2 = get_font("bold",    48)
+    f_title3 = get_font("bold",    40)
+    f_sub    = get_font("regular", 30)
+    f_feat   = get_font("bold",    26)
+    f_feat2  = get_font("regular", 24)
     f_badge  = get_font("bold",    26)
     f_cta    = get_font("bold",    26)
-    f_wm     = get_font("regular", 18)
+    f_num    = get_font("bold",    22)
 
-    title_lines = wrap(title, f_title, W - 80)
-    if len(title_lines) > 2:
-        f_title_use = f_title2
-        title_lines = wrap(title, f_title2, W - 80)
-    else:
-        f_title_use = f_title
+    # ── Заголовок — авто-размер чтобы влезало в 1-2 строки ──────────────────────
+    MARGIN = 40
+    for f_t in (f_title, f_title2, f_title3):
+        title_lines = wrap(title, f_t, W - MARGIN * 2)
+        if len(title_lines) <= 2:
+            f_title_use = f_t
+            break
 
-    ty = 48
+    ty = 90
+    th = text_h(f_title_use)
     for line in title_lines[:2]:
         x = centered_x(line, f_title_use)
-        if not is_dark:
-            draw.text((x+2, ty+2), line, font=f_title_use, fill=(*acc, 60))
+        # Тень для читаемости
+        draw.text((x+2, ty+2), line, font=f_title_use, fill=(0, 0, 0, 80))
         draw.text((x, ty), line, font=f_title_use, fill=(*t["text"], 255))
-        ty += text_h(f_title_use) + 8
+        ty += th + 8
 
+    # Подзаголовок
+    ty += 6
     if subtitle:
-        sub_lines = wrap(subtitle, f_sub, W - 120)
-        for line in sub_lines[:2]:
+        sub_lines = wrap(subtitle, f_sub, W - MARGIN * 2)
+        for line in sub_lines[:1]:
             x = centered_x(line, f_sub)
-            draw.text((x, ty), line, font=f_sub, fill=(*acc2, 255))
+            draw.text((x, ty), line, font=f_sub, fill=(*acc2, 230))
             ty += text_h(f_sub) + 4
-    ty += 12
+    ty += 18
 
-    PHOTO_SIZE = min(480, H - ty - 280)
+    # ── Фото товара (чёткое, по центру) ─────────────────────────────────────────
+    # Оставшееся место: от ty до верха feature-блока
+    # Feature блок займёт ~280px снизу, badge 80px сверху уже учтён
+    available = H - ty - 300
+    PHOTO_SIZE = min(420, max(280, available))
+
     prod = Image.open(img_path).convert("RGBA")
     pw, ph = prod.size
-    sq = min(pw, ph)
-    prod = prod.crop(((pw-sq)//2, (ph-sq)//2, (pw-sq)//2+sq, (ph-sq)//2+sq))
+    sq2 = min(pw, ph)
+    prod = prod.crop(((pw-sq2)//2, (ph-sq2)//2, (pw-sq2)//2+sq2, (ph-sq2)//2+sq2))
     prod = prod.resize((PHOTO_SIZE, PHOTO_SIZE), Image.LANCZOS)
 
     px = (W - PHOTO_SIZE) // 2
     py = ty
 
-    sh = Image.new("RGBA", (PHOTO_SIZE+50, PHOTO_SIZE+50), (0,0,0,0))
-    ImageDraw.Draw(sh).rounded_rectangle([10, 10, PHOTO_SIZE+40, PHOTO_SIZE+40],
-                                          radius=28, fill=(0,0,0,55))
-    sh = sh.filter(ImageFilter.GaussianBlur(20))
-    paste_a(canvas, sh, (px-25, py-5))
-    paste_a(canvas, rlayer(PHOTO_SIZE+20, PHOTO_SIZE+20, 24,
-                            fill=(*t["card"][:3], 245)), (px-10, py-10))
-    mask = Image.new("L", (PHOTO_SIZE, PHOTO_SIZE), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, PHOTO_SIZE, PHOTO_SIZE], radius=20, fill=255)
-    canvas.paste(prod, (px, py), mask)
+    # Тень под фото
+    sh_img = Image.new("RGBA", (PHOTO_SIZE + 60, PHOTO_SIZE + 60), (0, 0, 0, 0))
+    ImageDraw.Draw(sh_img).rounded_rectangle(
+        [15, 15, PHOTO_SIZE + 45, PHOTO_SIZE + 45], radius=30, fill=(0, 0, 0, 70)
+    )
+    sh_img = sh_img.filter(ImageFilter.GaussianBlur(22))
+    paste_a(canvas, sh_img, (px - 30, py - 5))
 
-    feat_top = py + PHOTO_SIZE + 22
-    COL_W   = (W - 60) // 2
-    ROW_H   = 90
-    GAP     = 14
-    LEFT_X  = 22
-    RIGHT_X = LEFT_X + COL_W + GAP
+    # Белая карточка под фото
+    paste_a(canvas, rlayer(PHOTO_SIZE + 16, PHOTO_SIZE + 16, 26,
+                            fill=(*t["card"][:3], 250)), (px - 8, py - 8))
 
-    ICON_SYMBOLS = ["★", "✓", "⚡", "♦"]
-    ICON_COLORS  = [acc, acc2,
-                    tuple(min(255, int(c*1.1)) for c in acc),
-                    tuple(min(255, int(c*0.9)) for c in acc2)]
+    # Фото с скруглёнными углами
+    photo_mask = Image.new("L", (PHOTO_SIZE, PHOTO_SIZE), 0)
+    ImageDraw.Draw(photo_mask).rounded_rectangle(
+        [0, 0, PHOTO_SIZE, PHOTO_SIZE], radius=22, fill=255
+    )
+    canvas.paste(prod, (px, py), photo_mask)
+
+    # ── Блоки преимуществ (2×2) ──────────────────────────────────────────────────
+    FEAT_TOP = py + PHOTO_SIZE + 24
+    COL_W    = (W - MARGIN * 2 - 16) // 2   # ~490
+    ROW_H    = min(115, (H - FEAT_TOP - 20) // 2 - 10)
+    GAP      = 12
+    LEFT_X   = MARGIN
+    RIGHT_X  = MARGIN + COL_W + GAP
+
+    # Цвета иконок
+    IC = [acc, acc2,
+          tuple(min(255, int(c * 1.15)) for c in acc),
+          tuple(min(255, int(c * 0.85)) for c in acc2)]
 
     positions = [
-        (LEFT_X,  feat_top),
-        (RIGHT_X, feat_top),
-        (LEFT_X,  feat_top + ROW_H + GAP),
-        (RIGHT_X, feat_top + ROW_H + GAP),
+        (LEFT_X,  FEAT_TOP),
+        (RIGHT_X, FEAT_TOP),
+        (LEFT_X,  FEAT_TOP + ROW_H + GAP),
+        (RIGHT_X, FEAT_TOP + ROW_H + GAP),
     ]
 
     for i, feat in enumerate(features[:4]):
-        if i >= len(positions): break
+        if i >= len(positions):
+            break
         fx, fy = positions[i]
-        ic = ICON_COLORS[i % len(ICON_COLORS)]
+        ic = IC[i % len(IC)]
 
-        paste_a(canvas, rlayer(COL_W+4, ROW_H+4, 18, (0,0,0,40), blur=8), (fx-2, fy))
-        card = rlayer(COL_W, ROW_H, 18,
-                       fill=(*t["card"][:3], 250),
-                       outline=(*ic, 120), ow=2)
+        # Тень карточки
+        paste_a(canvas, rlayer(COL_W + 6, ROW_H + 6, 20, (0, 0, 0, 50), blur=10), (fx - 3, fy + 2))
+
+        # Карточка
+        card = rlayer(COL_W, ROW_H, 20,
+                      fill=(*t["card"][:3], 248),
+                      outline=(*ic, 100), ow=2)
         cd = ImageDraw.Draw(card)
-        cd.rounded_rectangle([0, 0, 8, ROW_H], radius=4, fill=(*ic, 255))
 
-        icon_size = 52
-        icon_layer = rlayer(icon_size, icon_size, icon_size//2, fill=(*ic, 30))
-        icd = ImageDraw.Draw(icon_layer)
-        sym = ICON_SYMBOLS[i % len(ICON_SYMBOLS)]
-        sb  = f_feat.getbbox(sym)
-        sw, sh_sym = sb[2]-sb[0], sb[3]-sb[1]
-        icd.text(((icon_size-sw)//2, (icon_size-sh_sym)//2 - 2), sym, font=f_feat, fill=(*ic, 255))
-        card.paste(icon_layer, (14, (ROW_H-icon_size)//2), icon_layer.split()[3])
+        # Цветная полоска слева
+        cd.rounded_rectangle([0, 0, 7, ROW_H], radius=4, fill=(*ic, 255))
 
-        TEXT_X  = 14 + icon_size + 14
+        # Круглая иконка с номером (рисуем вручную — без emoji)
+        ICON_R = 24
+        ICX    = 18 + ICON_R  # центр круга по X
+        ICY    = ROW_H // 2
+        cd.ellipse([ICX - ICON_R, ICY - ICON_R, ICX + ICON_R, ICY + ICON_R],
+                   fill=(*ic, 220))
+        num_str = str(i + 1)
+        nb = f_num.getbbox(num_str)
+        nw, nh = nb[2] - nb[0], nb[3] - nb[1]
+        cd.text((ICX - nw // 2, ICY - nh // 2 - 1), num_str, font=f_num, fill=(255, 255, 255, 255))
+
+        # Текст преимущества
+        TEXT_X  = ICX + ICON_R + 14
         max_txt = COL_W - TEXT_X - 12
         lines   = wrap(feat, f_feat, max_txt)
-        lh      = text_h(f_feat) + 4
-        total_h = len(lines[:2]) * lh
-        tty     = (ROW_H - total_h) // 2
+        if not lines:
+            lines = [feat[:20]]
+        lh = text_h(f_feat) + 4
+
+        # Если не влезает в 2 строки bold — уменьшаем
+        if len(lines) > 2:
+            lines = wrap(feat, f_feat2, max_txt)
+
+        total_h = min(len(lines), 2) * lh
+        tty = (ROW_H - total_h) // 2 - 2
 
         for line in lines[:2]:
-            cd.text((TEXT_X, tty), line, font=f_feat, fill=(*ic, 255))
+            cd.text((TEXT_X, tty), line, font=f_feat, fill=(*t["text"], 240))
             tty += lh
 
         paste_a(canvas, card, (fx, fy))
 
+    # ── Бейдж (верх-лево) ─────────────────────────────────────────────────────────
     btxt = f"  {badge}  "
     bw   = int(f_badge.getlength(btxt)) + 18
     bh   = 46
-    bl   = rlayer(bw, bh, 12, fill=(210, 45, 45, 255))
-    ImageDraw.Draw(bl).text((9, (bh-26)//2), btxt, font=f_badge, fill=WHITE)
-    paste_a(canvas, bl, (32, 32))
+    bl   = rlayer(bw, bh, 12, fill=(210, 40, 40, 255))
+    ImageDraw.Draw(bl).text((9, (bh - 26) // 2), btxt, font=f_badge, fill=WHITE)
+    paste_a(canvas, bl, (MARGIN, 30))
 
+    # ── CTA (верх-право) ──────────────────────────────────────────────────────────
     ctxt = f"  {cta}  "
     cw   = int(f_cta.getlength(ctxt)) + 22
     ch   = 46
-    cl   = rlayer(cw, ch, 12, fill=(*acc, 245), outline=(*acc2, 200), ow=2)
-    ImageDraw.Draw(cl).text((11, (ch-26)//2), ctxt, font=f_cta, fill=WHITE)
-    paste_a(canvas, cl, (W - cw - 32, 32))
-
-    wm = "AI Infografika Bot"
-    draw = ImageDraw.Draw(canvas)
-    draw.text((W//2 - int(f_wm.getlength(wm))//2, H - 26),
-              wm, font=f_wm, fill=(*acc, 80))
+    cl   = rlayer(cw, ch, 14, fill=(*acc, 240), outline=(*acc2, 180), ow=2)
+    ImageDraw.Draw(cl).text((11, (ch - 26) // 2), ctxt, font=f_cta, fill=WHITE)
+    paste_a(canvas, cl, (W - cw - MARGIN, 30))
 
     out = img_path.rsplit(".", 1)[0] + "_card.png"
     canvas.convert("RGB").save(out, "PNG", quality=95)
@@ -635,7 +676,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    msg = await update.message.reply_text("⏳ Анализирую товар через GPT-4o...")
+    msg = await update.message.reply_text("⏳ Анализирую товар...")
     img_path = f"/tmp/product_{uid}.jpg"
     out_path = None
     try:
@@ -803,7 +844,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.reply_text(
             "📌 *Как работает бот:*\n\n"
             "1. Отправь фото товара\n"
-            "2. GPT-4o анализирует и пишет тексты\n"
+            "2. ИИ анализирует и пишет продающие тексты\n"
             "3. Получаешь карточку 1080×1080 для WB/OZON\n\n"
             "🎨 Тема подбирается автоматически.\n"
             "💳 1 фото = 1 карточка.",
