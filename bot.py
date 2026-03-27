@@ -240,65 +240,80 @@ def analyze_product_image(image_path: str) -> dict:
         }
 
 
-# ── DALL-E 3: генерация красивого фона ────────────────────────────────────────────
-def generate_scene_background(scene_desc: str) -> str | None:
-    """Генерирует фоновую сцену 1024x1024 через DALL-E 3 и возвращает путь к файлу."""
-    prompt = (
-        f"Beautiful product photography background scene, no text, no product, no labels, "
-        f"no words, square format 1:1, professional studio quality, shallow depth of field: "
-        f"{scene_desc}"
-    )
+# ── ГЕНЕРАЦИЯ ИНФОГРАФИКИ ЧЕРЕЗ GPT-IMAGE-1 ──────────────────────────────────────
+def generate_infographic_image(image_path: str, data: dict) -> str | None:
+    """
+    Генерирует полную инфографику через gpt-image-1:
+    берёт исходное фото товара и создаёт готовую маркетплейс-карточку.
+    Возвращает путь к файлу или None если не удалось.
+    """
+    with open(image_path, "rb") as f:
+        img_bytes = f.read()
+        img_b64 = base64.b64encode(img_bytes).decode()
+
+    title    = data.get("title", "Товар")
+    subtitle = data.get("subtitle", "")
+    features = data.get("features", [])[:4]
+    badge    = data.get("badge", "")
+    scene    = data.get("scene_description", "luxury product photography, warm bokeh, elegant")
+
+    feat_text = "\n".join(f"- {f}" for f in features)
+
+    prompt = f"""Create a professional product infographic card for a Russian marketplace (Wildberries/OZON), 1080x1080px style.
+
+CRITICAL RULES:
+- The product from the attached photo MUST be the main element, placed prominently in the center, taking up about 50-60% of the card
+- Create a beautiful lifestyle scene AROUND the product: {scene}
+- The product must look like it naturally belongs in this scene
+- DO NOT add any text, labels, titles, or words to the image — NO TEXT AT ALL
+- The image should be clean, without any typography
+- Background should have soft bokeh, depth of field
+- Professional studio-quality product photography look
+- Warm, rich, luxurious atmosphere
+- The product should be clearly visible and be the focal point
+- Square format 1:1
+"""
+
     try:
-        response = client.images.generate(
-            model="dall-e-3",
+        result = client.images.generate(
+            model="gpt-image-1",
             prompt=prompt,
             size="1024x1024",
-            quality="standard",
+            quality="high",
             n=1,
         )
-        image_url = response.data[0].url
-        bg_path = "/tmp/scene_bg.png"
-        urllib.request.urlretrieve(image_url, bg_path)
-        return bg_path
+        # gpt-image-1 returns base64
+        img_data = result.data[0].b64_json
+        if img_data:
+            out_path = image_path.rsplit(".", 1)[0] + "_scene.png"
+            with open(out_path, "wb") as f:
+                f.write(base64.b64decode(img_data))
+            return out_path
+        # fallback: URL
+        if result.data[0].url:
+            out_path = image_path.rsplit(".", 1)[0] + "_scene.png"
+            urllib.request.urlretrieve(result.data[0].url, out_path)
+            return out_path
     except Exception as e:
-        logging.warning(f"DALL-E scene generation failed: {e}")
-        return None
+        logging.warning(f"gpt-image-1 failed: {e}")
+        # Fallback: попробовать dall-e-3
+        try:
+            result = client.images.generate(
+                model="dall-e-3",
+                prompt=f"Professional product photography scene with the product in center, {scene}. "
+                       f"Beautiful lifestyle composition, no text, no labels, square 1:1, "
+                       f"soft bokeh background, warm golden lighting.",
+                size="1024x1024",
+                quality="standard",
+                n=1,
+            )
+            out_path = image_path.rsplit(".", 1)[0] + "_scene.png"
+            urllib.request.urlretrieve(result.data[0].url, out_path)
+            return out_path
+        except Exception as e2:
+            logging.warning(f"DALL-E 3 fallback also failed: {e2}")
+    return None
 
-
-# ── COLOR THEMES ─────────────────────────────────────────────────────────────────
-# overlay_rgb = цвет оверлея поверх размытого фото
-# overlay_a   = прозрачность оверлея (0=прозрачный фон, 255=полностью закрашен)
-# title_color = цвет заголовка
-# sub_color   = цвет подзаголовка
-# feat_bg     = фон карточки преимуществ
-# feat_text   = цвет текста в карточках
-# acc         = акцент (бейдж, полоска, номер)
-THEMES = {
-    "warm": {
-        "overlay_rgb": (60, 28, 5),   "overlay_a": 165,
-        "title_color": (255, 248, 235), "sub_color": (255, 190, 100),
-        "feat_bg": (255, 255, 255, 200), "feat_text": (40, 20, 5),
-        "acc": (210, 90, 20), "acc2": (240, 150, 50),
-    },
-    "cool": {
-        "overlay_rgb": (8, 25, 65),    "overlay_a": 170,
-        "title_color": (230, 240, 255), "sub_color": (120, 180, 255),
-        "feat_bg": (255, 255, 255, 200), "feat_text": (10, 25, 60),
-        "acc": (40, 100, 220), "acc2": (80, 150, 255),
-    },
-    "neutral": {
-        "overlay_rgb": (25, 25, 25),   "overlay_a": 155,
-        "title_color": (250, 250, 250), "sub_color": (190, 190, 190),
-        "feat_bg": (255, 255, 255, 200), "feat_text": (20, 20, 20),
-        "acc": (80, 80, 80), "acc2": (140, 140, 140),
-    },
-    "dark": {
-        "overlay_rgb": (12, 10, 20),   "overlay_a": 180,
-        "title_color": (245, 225, 165), "sub_color": (200, 170, 100),
-        "feat_bg": (30, 25, 45, 220),  "feat_text": (240, 230, 200),
-        "acc": (210, 165, 65), "acc2": (245, 205, 100),
-    },
-}
 
 W, H = 1080, 1080
 MARGIN = 44
@@ -338,57 +353,48 @@ def text_h(font):
     return b[3] - b[1]
 
 
-def draw_text_shadow(draw, xy, text, font, fill, shadow_alpha=100):
+def draw_text_shadow(draw, xy, text, font, fill, shadow=(0, 0, 0), s_alpha=180, offset=3):
     x, y = xy
-    draw.text((x + 3, y + 3), text, font=font, fill=(0, 0, 0, shadow_alpha))
+    draw.text((x + offset, y + offset), text, font=font, fill=(*shadow, s_alpha))
     draw.text((x, y), text, font=font, fill=fill)
 
 
-# ── INFOGRAPHIC — DALL-E фон + текст поверх ─────────────────────────────────────
+# ── MAKE INFOGRAPHIC — финальная сборка ──────────────────────────────────────────
 def make_infographic(img_path: str, data: dict, scene_bg_path: str | None = None) -> str:
     title    = data.get("title", "Товар").upper()
     subtitle = data.get("subtitle", "")
     features = data.get("features", [])[:4]
-    badge    = data.get("badge", "ХИТ")
-    t        = THEMES.get(data.get("color_theme", "warm"), THEMES["warm"])
+    badge    = data.get("badge", "")
 
-    acc  = t["acc"]
-    acc2 = t["acc2"]
-    tc   = (*t["title_color"], 255)
-    sc   = (*t["sub_color"], 230)
     WHITE = (255, 255, 255, 255)
 
-    # ── ФОН: DALL-E сгенерированная сцена, или fallback на размытое фото ────────
+    # ── Фон: сгенерированная сцена или fallback ──────────────────────────────────
     if scene_bg_path and os.path.exists(scene_bg_path):
-        bg_img = Image.open(scene_bg_path).convert("RGB").resize((W, H), Image.LANCZOS)
+        canvas = Image.open(scene_bg_path).convert("RGBA").resize((W, H), Image.LANCZOS)
     else:
         raw = Image.open(img_path).convert("RGB")
         rw, rh = raw.size
         sq = min(rw, rh)
-        bg_img = raw.crop(((rw-sq)//2, (rh-sq)//2, (rw-sq)//2+sq, (rh-sq)//2+sq))
-        bg_img = bg_img.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(45))
+        bg = raw.crop(((rw-sq)//2, (rh-sq)//2, (rw-sq)//2+sq, (rh-sq)//2+sq))
+        canvas = bg.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(45)).convert("RGBA")
 
-    canvas = bg_img.convert("RGBA")
-
-    # Затемнение сверху и снизу — для читаемости текста
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    od = ImageDraw.Draw(overlay)
-    # Сверху — градиент от тёмного к прозрачному
-    for i in range(450):
-        a = int(180 * (1 - i / 450) ** 1.5)
+    # ── Затемнение сверху и снизу для текста ─────────────────────────────────────
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    od = ImageDraw.Draw(ov)
+    for i in range(380):
+        a = int(170 * (1 - i / 380) ** 1.6)
         od.line([(0, i), (W, i)], fill=(0, 0, 0, a))
-    # Снизу — градиент от прозрачного к тёмному
-    for i in range(500):
-        a = int(200 * (1 - i / 500) ** 1.3)
+    for i in range(350):
+        a = int(190 * (1 - i / 350) ** 1.4)
         od.line([(0, H - 1 - i), (W, H - 1 - i)], fill=(0, 0, 0, a))
-    canvas = Image.alpha_composite(canvas, overlay)
+    canvas = Image.alpha_composite(canvas, ov)
     draw = ImageDraw.Draw(canvas)
 
-    # ── ЗАГОЛОВОК — огромный, сверху ────────────────────────────────────────────
+    # ── ЗАГОЛОВОК — крупно сверху ────────────────────────────────────────────────
     title_max_w = W - MARGIN * 2
     f_title_use = None
     title_lines = []
-    for size in (96, 84, 72, 60, 50):
+    for size in (100, 88, 76, 64, 54):
         f_t = get_font("bold", size)
         lines = wrap(title, f_t, title_max_w)
         if len(lines) <= 3:
@@ -396,64 +402,59 @@ def make_infographic(img_path: str, data: dict, scene_bg_path: str | None = None
             title_lines = lines
             break
     if not f_title_use:
-        f_title_use = get_font("bold", 50)
+        f_title_use = get_font("bold", 54)
         title_lines = wrap(title, f_title_use, title_max_w)
 
-    ty = 55
+    ty = 50
     th = text_h(f_title_use)
     for line in title_lines[:3]:
         x = centered_x(line, f_title_use)
-        draw_text_shadow(draw, (x, ty), line, f_title_use, tc, shadow_alpha=200)
-        ty += th + 8
-    ty += 10
+        draw_text_shadow(draw, (x, ty), line, f_title_use, WHITE, s_alpha=220, offset=4)
+        ty += th + 6
 
-    # Подзаголовок
-    f_sub = get_font("regular", 36)
+    # Подзаголовок — курсив-стиль, мягче
     if subtitle:
+        f_sub = get_font("regular", 36)
+        ty += 8
         for line in wrap(subtitle, f_sub, title_max_w)[:2]:
             x = centered_x(line, f_sub)
-            draw_text_shadow(draw, (x, ty), line, f_sub, sc, shadow_alpha=150)
-            ty += text_h(f_sub) + 6
+            draw_text_shadow(draw, (x, ty), line, f_sub, (255, 220, 160, 255), s_alpha=160, offset=2)
+            ty += text_h(f_sub) + 4
 
-    # ── ПРЕИМУЩЕСТВА — внизу поверх затемнения ──────────────────────────────────
-    f_feat = get_font("bold", 32)
-    f_feat_sm = get_font("regular", 28)
-    feat_line_h = text_h(f_feat) + 14
-    total_feat_h = len(features) * feat_line_h + 20
+    # ── ПРЕИМУЩЕСТВА — элегантно внизу ───────────────────────────────────────────
+    f_feat = get_font("bold", 30)
+    feat_lh = text_h(f_feat) + 16
+    total_fh = len(features) * feat_lh + 24
 
-    # Полупрозрачная тёмная подложка снизу
-    feat_y_start = H - total_feat_h - 30
-    feat_bg = Image.new("RGBA", (W, total_feat_h + 50), (0, 0, 0, 0))
-    ImageDraw.Draw(feat_bg).rounded_rectangle(
-        [MARGIN - 10, 0, W - MARGIN + 10, total_feat_h + 50],
-        radius=24, fill=(0, 0, 0, 90),
+    fy_start = H - total_fh - 26
+
+    # Полупрозрачная подложка
+    feat_panel = Image.new("RGBA", (W, total_fh + 30), (0, 0, 0, 0))
+    ImageDraw.Draw(feat_panel).rounded_rectangle(
+        [MARGIN - 14, 0, W - MARGIN + 14, total_fh + 30], radius=22, fill=(0, 0, 0, 80)
     )
-    paste_a(canvas, feat_bg, (0, feat_y_start - 10))
+    paste_a(canvas, feat_panel, (0, fy_start - 8))
 
-    fy = feat_y_start
-    for i, feat in enumerate(features[:4]):
-        # Кружок с номером
-        cx = MARGIN + 22
-        cy = fy + feat_line_h // 2
-        draw.ellipse([cx - 18, cy - 18, cx + 18, cy + 18], fill=(*acc, 230))
-        f_num = get_font("bold", 20)
-        ns = str(i + 1)
-        nb = f_num.getbbox(ns)
-        nw, nh = nb[2] - nb[0], nb[3] - nb[1]
-        draw.text((cx - nw // 2, cy - nh // 2 - 1), ns, font=f_num, fill=WHITE)
+    fy = fy_start
+    f_dot = get_font("bold", 34)
+    for feat in features[:4]:
+        # Символ-буллет
+        draw_text_shadow(draw, (MARGIN + 4, fy - 2), "•", f_dot,
+                         (255, 190, 80, 255), s_alpha=150, offset=2)
         # Текст
-        draw_text_shadow(draw, (cx + 28, cy - text_h(f_feat) // 2),
-                         feat, f_feat, WHITE, shadow_alpha=180)
-        fy += feat_line_h
+        draw_text_shadow(draw, (MARGIN + 36, fy), feat, f_feat,
+                         WHITE, s_alpha=180, offset=2)
+        fy += feat_lh
 
-    # ── БЕЙДЖ (верх-лево) ─────────────────────────────────────────────────────────
-    f_badge = get_font("bold", 26)
-    btxt = f"  {badge}  "
-    bw = int(f_badge.getlength(btxt)) + 16
-    bh = 44
-    bl = rlayer(bw, bh, 11, fill=(205, 35, 35, 240))
-    ImageDraw.Draw(bl).text((8, (bh - 26) // 2), btxt, font=f_badge, fill=WHITE)
-    paste_a(canvas, bl, (MARGIN, 18))
+    # ── БЕЙДЖ ────────────────────────────────────────────────────────────────────
+    if badge:
+        f_badge = get_font("bold", 24)
+        btxt = f"  {badge}  "
+        bw = int(f_badge.getlength(btxt)) + 14
+        bh = 40
+        bl = rlayer(bw, bh, 10, fill=(210, 35, 35, 240))
+        ImageDraw.Draw(bl).text((7, (bh - 24) // 2), btxt, font=f_badge, fill=WHITE)
+        paste_a(canvas, bl, (MARGIN, 14))
 
     out = img_path.rsplit(".", 1)[0] + "_card.png"
     canvas.convert("RGB").save(out, "PNG", quality=95)
@@ -662,12 +663,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text("🔍 Определяю товар и пишу тексты...")
         data = analyze_product_image(img_path)
 
-        await msg.edit_text("🎨 Генерирую дизайн сцены...")
-        scene_desc = data.get("scene_description", "")
-        bg_path = generate_scene_background(scene_desc) if scene_desc else None
+        await msg.edit_text("🎨 Генерирую инфографику (15-20 сек)...")
+        scene_path_gen = generate_infographic_image(img_path, data)
 
         await msg.edit_text("✨ Собираю карточку...")
-        out_path = make_infographic(img_path, data, scene_bg_path=bg_path)
+        out_path = make_infographic(img_path, data, scene_bg_path=scene_path_gen)
         consume(uid)
 
         caption = (
