@@ -40,9 +40,15 @@ PROMO_CODES: dict[str, dict] = {
 }
 
 # ── ТАРИФНЫЕ ПЛАНЫ ───────────────────────────────────────────────────────────────
-FREE_CREDITS = 3
+FREE_CREDITS = 1
 
 PLANS = {
+    "single": {
+        "name": "1 карточка", "emoji": "🎨",
+        "credits": 1, "duration_days": None,
+        "price_rub": 60, "price_usdt": 0.7, "price_ton": 7,
+        "description": "1 карточка",
+    },
     "start": {
         "name": "Старт", "emoji": "🚀",
         "credits": 10, "duration_days": None,
@@ -240,40 +246,70 @@ def analyze_product_image(image_path: str) -> dict:
         }
 
 
-# ── ГЕНЕРАЦИЯ ИНФОГРАФИКИ ЧЕРЕЗ GPT-IMAGE-1 ──────────────────────────────────────
-def generate_infographic_image(image_path: str, data: dict) -> str | None:
+# ── ГЕНЕРАЦИЯ ПОЛНОЙ ИНФОГРАФИКИ ЧЕРЕЗ GPT-IMAGE-1 ───────────────────────────────
+def generate_full_infographic(image_path: str, data: dict, user_caption: str = "") -> str | None:
     """
-    Генерирует полную инфографику через gpt-image-1:
-    берёт исходное фото товара и создаёт готовую маркетплейс-карточку.
-    Возвращает путь к файлу или None если не удалось.
+    Генерирует ПОЛНУЮ готовую инфографику через gpt-image-1:
+    - Передаёт фото товара как input image
+    - ИИ создаёт сцену с товаром + красивый текст + дизайн
+    Возвращает путь к файлу или None.
     """
-    with open(image_path, "rb") as f:
-        img_bytes = f.read()
-        img_b64 = base64.b64encode(img_bytes).decode()
-
     title    = data.get("title", "Товар")
     subtitle = data.get("subtitle", "")
     features = data.get("features", [])[:4]
     badge    = data.get("badge", "")
     scene    = data.get("scene_description", "luxury product photography, warm bokeh, elegant")
 
-    feat_text = "\n".join(f"- {f}" for f in features)
+    feat_text = "\n".join(f"• {f}" for f in features)
 
-    prompt = f"""Create a professional product infographic card for a Russian marketplace (Wildberries/OZON), 1080x1080px style.
+    # Дополнительный контекст от пользователя
+    user_hint = ""
+    if user_caption:
+        user_hint = f"\nДополнительные пожелания от пользователя: {user_caption}\n"
 
-CRITICAL RULES:
-- The product from the attached photo MUST be the main element, placed prominently in the center, taking up about 50-60% of the card
-- Create a beautiful lifestyle scene AROUND the product: {scene}
-- The product must look like it naturally belongs in this scene
-- DO NOT add any text, labels, titles, or words to the image — NO TEXT AT ALL
-- The image should be clean, without any typography
-- Background should have soft bokeh, depth of field
-- Professional studio-quality product photography look
-- Warm, rich, luxurious atmosphere
-- The product should be clearly visible and be the focal point
-- Square format 1:1
-"""
+    prompt = f"""Создай профессиональную инфографику-карточку товара для маркетплейса (Wildberries/OZON). Квадратный формат 1:1, 1080x1080.
 
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. ТОВАР С ФОТО должен быть ГЛАВНЫМ ЭЛЕМЕНТОМ — крупно в центре, занимает 50-60% карточки
+2. Товар должен выглядеть ТОЧНО как на приложенном фото — та же банка/упаковка/форма/этикетка
+3. Вокруг товара создай красивую сцену: {scene}
+4. Добавь КРАСИВЫЙ ТЕКСТ прямо на изображение:
+   - Заголовок: "{title}" — крупным красивым шрифтом сверху или сбоку
+   - Подзаголовок: "{subtitle}" — меньшим элегантным шрифтом
+   - Преимущества разместить красиво вокруг товара, в разных местах с разными шрифтами:
+{feat_text}
+5. Текст должен быть НА РУССКОМ ЯЗЫКЕ
+6. Шрифты: используй разные размеры и стили — крупный жирный заголовок, элегантный курсив для подзаголовка, чёткий для буллетов
+7. Текст может быть в разных местах: сверху, по бокам, снизу — гармонично вписан в композицию
+8. Стиль: премиальный, богатый, как в профессиональном дизайне для маркетплейсов
+9. Цвета текста должны контрастировать с фоном и быть хорошо читаемы
+10. НЕ ИСКАЖАЙ товар — он должен выглядеть реалистично, как на оригинальном фото
+{user_hint}
+Стиль: Wildberries/OZON инфографика премиум-класса."""
+
+    out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
+
+    try:
+        # gpt-image-1 с input image
+        with open(image_path, "rb") as img_file:
+            result = client.images.edit(
+                model="gpt-image-1",
+                image=img_file,
+                prompt=prompt,
+                size="1024x1024",
+            )
+        img_data = result.data[0].b64_json
+        if img_data:
+            with open(out_path, "wb") as f:
+                f.write(base64.b64decode(img_data))
+            return out_path
+        if result.data[0].url:
+            urllib.request.urlretrieve(result.data[0].url, out_path)
+            return out_path
+    except Exception as e:
+        logging.warning(f"gpt-image-1 edit failed: {e}")
+
+    # Fallback: gpt-image-1 generate (без input image, но с описанием)
     try:
         result = client.images.generate(
             model="gpt-image-1",
@@ -282,36 +318,14 @@ CRITICAL RULES:
             quality="high",
             n=1,
         )
-        # gpt-image-1 returns base64
         img_data = result.data[0].b64_json
         if img_data:
-            out_path = image_path.rsplit(".", 1)[0] + "_scene.png"
             with open(out_path, "wb") as f:
                 f.write(base64.b64decode(img_data))
             return out_path
-        # fallback: URL
-        if result.data[0].url:
-            out_path = image_path.rsplit(".", 1)[0] + "_scene.png"
-            urllib.request.urlretrieve(result.data[0].url, out_path)
-            return out_path
-    except Exception as e:
-        logging.warning(f"gpt-image-1 failed: {e}")
-        # Fallback: попробовать dall-e-3
-        try:
-            result = client.images.generate(
-                model="dall-e-3",
-                prompt=f"Professional product photography scene with the product in center, {scene}. "
-                       f"Beautiful lifestyle composition, no text, no labels, square 1:1, "
-                       f"soft bokeh background, warm golden lighting.",
-                size="1024x1024",
-                quality="standard",
-                n=1,
-            )
-            out_path = image_path.rsplit(".", 1)[0] + "_scene.png"
-            urllib.request.urlretrieve(result.data[0].url, out_path)
-            return out_path
-        except Exception as e2:
-            logging.warning(f"DALL-E 3 fallback also failed: {e2}")
+    except Exception as e2:
+        logging.warning(f"gpt-image-1 generate fallback failed: {e2}")
+
     return None
 
 
@@ -562,7 +576,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 *Привет!* Я создаю профессиональные карточки товаров для маркетплейсов.\n\n"
         "📸 Пришли фото товара — получишь карточку 1080×1080 для WB / OZON!\n\n"
-        f"🎁 У тебя *{FREE_CREDITS} бесплатных* карточки.\n\n"
+        f"🎁 У тебя *{FREE_CREDITS} бесплатная* карточка.\n\n"
+        "💡 Добавь подпись к фото — бот учтёт твои пожелания!\n\n"
         "Выбери действие в меню ниже ↓",
         parse_mode="Markdown",
         reply_markup=main_menu_keyboard(),
@@ -572,7 +587,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🛒 *Выбери тариф:*\n\n"
-        "🆓 Бесплатно — 3 карточки\n"
+        "🆓 Бесплатно — 1 карточка\n"
+        "🎨 1 карточка — 60 ₽\n"
         "🚀 Старт — 10 карточек | 490 ₽ / 5 USDT\n"
         "💎 Про — 30 карточек | 990 ₽ / 10 USDT\n"
         "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽ / 100 USDT",
@@ -653,21 +669,25 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("⏳ Анализирую товар...")
     img_path = f"/tmp/product_{uid}.jpg"
-    scene_path = f"/tmp/scene_{uid}.png"
     out_path = None
     try:
         photo = update.message.photo[-1]
         file  = await context.bot.get_file(photo.file_id)
         await file.download_to_drive(img_path)
 
-        await msg.edit_text("🔍 Определяю товар и пишу тексты...")
+        # Пользователь может добавить подпись к фото с пожеланиями
+        user_caption = update.message.caption or ""
+
+        await msg.edit_text("🔍 Анализирую товар...")
         data = analyze_product_image(img_path)
 
-        await msg.edit_text("🎨 Генерирую инфографику (15-20 сек)...")
-        scene_path_gen = generate_infographic_image(img_path, data)
+        await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...")
+        out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
 
-        await msg.edit_text("✨ Собираю карточку...")
-        out_path = make_infographic(img_path, data, scene_bg_path=scene_path_gen)
+        if not out_path:
+            await msg.edit_text("😔 Не удалось сгенерировать. Попробуй ещё раз.")
+            return
+
         consume(uid)
 
         caption = (
@@ -675,6 +695,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"_{data.get('subtitle', '')}_\n\n"
             + "\n".join(f"• {f}" for f in data.get("features", []))
             + f"\n\n{credits_display(uid)}"
+            + "\n\n💡 _Добавь подпись к фото для кастомизации_"
         )
         with open(out_path, "rb") as f:
             await update.message.reply_photo(f, caption=caption, parse_mode="Markdown",
@@ -691,7 +712,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🚨 Критическая ошибка API!\n`{type(e).__name__}: {e}`\n\n"
                 "Проверь баланс OpenAI и Railway Variables.")
     finally:
-        for p in [img_path, out_path, scene_path]:
+        for p in [img_path, out_path]:
             if p:
                 try: os.remove(p)
                 except OSError: pass
