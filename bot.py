@@ -574,11 +574,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     get_user(uid)
     await update.message.reply_text(
-        "👋 *Привет!* Я создаю профессиональные карточки товаров для маркетплейсов.\n\n"
-        "📸 Пришли фото товара — получишь карточку 1080×1080 для WB / OZON!\n\n"
+        "🎨 *AI Карточки для маркетплейсов*\n\n"
+        "Превращаю обычные фото товаров в *продающие карточки* "
+        "для Wildberries, OZON и других маркетплейсов.\n\n"
+        "📸 *Как пользоваться:*\n"
+        "1. Отправь фото товара\n"
+        "2. ИИ создаст красивую сцену с товаром\n"
+        "3. Получи готовую карточку 1080×1080\n\n"
+        "💡 *Совет:* добавь подпись к фото!\n"
+        "_Пример: «свеча апельсин и корица, тёплый уютный стиль, с цветами»_\n"
+        "Так результат будет точнее.\n\n"
         f"🎁 У тебя *{FREE_CREDITS} бесплатная* карточка.\n\n"
-        "💡 Добавь подпись к фото — бот учтёт твои пожелания!\n\n"
-        "Выбери действие в меню ниже ↓",
+        "⬇️ Выбери действие:",
         parse_mode="Markdown",
         reply_markup=main_menu_keyboard(),
     )
@@ -725,7 +732,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📸 Сгенерировать карточку":
         await update.message.reply_text(
-            "📸 Отправь фото товара — я создам карточку для маркетплейса!",
+            "📸 *Отправь фото товара* — я создам карточку для маркетплейса!\n\n"
+            "💡 *Подсказка:* добавь подпись к фото для лучшего результата.\n"
+            "_Например: «крем для лица, с цветами, нежный стиль» или "
+            "«кроссовки, спортивный стиль, динамичный фон»_\n\n"
+            "Без подписи тоже работает — ИИ сам определит товар.",
+            parse_mode="Markdown",
         )
     elif text == "💡 Мои карточки":
         await update.message.reply_text(
@@ -871,10 +883,42 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 
+# ── НАСТРОЙКА БОТА В TELEGRAM ─────────────────────────────────────────────────────
+async def setup_bot(app):
+    """Устанавливает описание, about и команды бота при запуске."""
+    bot = app.bot
+    try:
+        await bot.set_my_description(
+            "🎨 ИИ-генератор карточек товаров для маркетплейсов\n\n"
+            "Превращаю обычные фото в продающие карточки для Wildberries, OZON "
+            "и других площадок.\n\n"
+            "Что умеет бот:\n"
+            "📸 Принимает фото товара\n"
+            "🤖 ИИ создаёт красивую сцену вокруг товара\n"
+            "✨ Генерирует готовую карточку 1080×1080\n"
+            "🎯 Добавляет продающий текст и дизайн\n\n"
+            "Как пользоваться:\n"
+            "Отправь фото товара с описанием — получи карточку за 30 секунд!"
+        )
+        await bot.set_my_short_description(
+            "🎨 ИИ-генератор карточек товаров для WB, OZON. "
+            "Отправь фото — получи готовую продающую карточку!"
+        )
+        await bot.set_my_commands([
+            ("start",   "Запустить бота"),
+            ("buy",     "Купить карточки"),
+            ("credits", "Мой баланс"),
+            ("promo",   "Ввести промокод"),
+        ])
+        logging.info("Bot description and commands set.")
+    except Exception as e:
+        logging.warning(f"Could not set bot info: {e}")
+
+
 # ── MAIN ──────────────────────────────────────────────────────────────────────────
 def main():
     download_fonts()
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(setup_bot).build()
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("buy",       cmd_buy))
     app.add_handler(CommandHandler("credits",   cmd_credits))
