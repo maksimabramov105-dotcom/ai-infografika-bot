@@ -141,14 +141,14 @@ PLANS = {
     "analytics_supplier": {
         "name": "Поставщики", "emoji": "🏭",
         "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
-        "price_rub": 1999, "price_usdt": 22, "price_ton": 220,
+        "price_rub": 1333, "price_usdt": 15, "price_ton": 150,
         "description": "Поиск поставщиков (1688, Alibaba)",
     },
     "analytics_full": {
         "name": "Полный анализ", "emoji": "📦",
         "credits": 0, "seo_credits": 0, "analytics_credits": 3, "duration_days": None,
-        "price_rub": 3777, "price_usdt": 41, "price_ton": 410,
-        "description": "Ниша + сезонность + поставщики (экономия 720₽)",
+        "price_rub": 2499, "price_usdt": 28, "price_ton": 280,
+        "description": "Ниша + сезонность + поставщики (экономия 332₽)",
     },
 }
 
@@ -1240,39 +1240,64 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         method_label = "РФ карта" if method == "ru_card" else "Visa Revolut"
         photo        = update.message.photo[-1]
 
-        # 1. Авто-подтверждаем и сразу пополняем баланс
-        apply_plan(uid, pid)
+        # Суммы > 500₽ (или > $5.5) — только ручное подтверждение
+        amount_rub = p["price_rub"] if method == "ru_card" else int(p["price_usdt"] * 90)
+        needs_manual = amount_rub > 500
 
-        await update.message.reply_text(
-            f"✅ Оплата подтверждена автоматически!\n\n"
-            f"{p['emoji']} *{p['name']}* активирован.\n\n"
-            f"{credits_display(uid)}\n\n"
-            f"Отправляй фото товаров — создадим карточки! 🎨",
-            parse_mode="Markdown",
-        )
-
-        # 2. Уведомляем владельца с возможностью отозвать
         if not OWNER_ID:
+            logging.error("OWNER_ID not set — cannot process transfer!")
             return
 
-        caption = (
-            f"🔔 Авто-подтверждено\n\n"
-            f"👤 {full_name} (@{user_obj.username or 'без username'}, ID: {uid})\n"
-            f"💰 {expected_amount} {currency} — {method_label}\n"
-            f"📦 Тариф: {p['name']}\n\n"
-            f"Баланс уже пополнен. Нажми ↩️ если скриншот поддельный — баланс спишется обратно."
-        )
-        try:
-            await context.bot.send_photo(
-                OWNER_ID,
-                photo.file_id,
-                caption=caption,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("↩️ Отозвать (мошенник)", callback_data=f"owner_revoke_{uid}_{pid}"),
-                ]]),
+        if needs_manual:
+            # Ждём ручного подтверждения от владельца
+            await update.message.reply_text(
+                "📨 Скриншот получен!\n\n"
+                "Сумма требует ручной проверки — подтвердим в течение нескольких минут.\n"
+                "Как только проверим, баланс пополнится автоматически 🙏",
             )
-        except Exception as e:
-            logging.error(f"Failed to notify owner of auto-confirmed transfer: {e}")
+            caption = (
+                f"⚠️ Требует подтверждения\n\n"
+                f"👤 {full_name} (@{user_obj.username or 'без username'}, ID: {uid})\n"
+                f"💰 {expected_amount} {currency} — {method_label}\n"
+                f"📦 Тариф: {p['name']}\n\n"
+                f"Сумма > 500₽ — подтверди вручную."
+            )
+            try:
+                await context.bot.send_photo(
+                    OWNER_ID, photo.file_id, caption=caption,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("✅ Подтвердить", callback_data=f"owner_confirm_{uid}_{pid}"),
+                        InlineKeyboardButton("❌ Отклонить",   callback_data=f"owner_reject_{uid}"),
+                    ]]),
+                )
+            except Exception as e:
+                logging.error(f"Failed to forward transfer to owner: {e}")
+        else:
+            # Авто-подтверждение для малых сумм
+            apply_plan(uid, pid)
+            await update.message.reply_text(
+                f"✅ Оплата подтверждена!\n\n"
+                f"{p['emoji']} *{p['name']}* активирован.\n\n"
+                f"{credits_display(uid)}\n\n"
+                f"Отправляй фото товаров — создадим карточки! 🎨",
+                parse_mode="Markdown",
+            )
+            caption = (
+                f"🔔 Авто-подтверждено (≤500₽)\n\n"
+                f"👤 {full_name} (@{user_obj.username or 'без username'}, ID: {uid})\n"
+                f"💰 {expected_amount} {currency} — {method_label}\n"
+                f"📦 Тариф: {p['name']}\n\n"
+                f"Баланс пополнен. Нажми ↩️ если скриншот поддельный."
+            )
+            try:
+                await context.bot.send_photo(
+                    OWNER_ID, photo.file_id, caption=caption,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("↩️ Отозвать (мошенник)", callback_data=f"owner_revoke_{uid}_{pid}"),
+                    ]]),
+                )
+            except Exception as e:
+                logging.error(f"Failed to notify owner of auto-confirmed transfer: {e}")
         return
 
     if not has_access(uid):
@@ -1566,12 +1591,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📊 Аналитика":
         await update.message.reply_text(
             "📊 *Аналитика для маркетплейсов*\n\n"
-            "🔍 /nicha `товар` — анализ ниши (WB, OZON — конкуренция, цены, лидеры)\n"
-            "📅 /season `товар` — анализ товаров + сезонность (пик продаж, когда входить)\n"
-            "🏭 /supplier `товар` — поиск поставщиков (1688, Alibaba)\n"
-            "📦 /full `товар` — полный анализ (все три отчёта)\n"
-            "💰 /balance — баланс кредитов аналитики\n\n"
-            "Пример: `/nicha кокосовое масло`",
+            "🔍 *Анализ ниши* — /nicha `товар`\n"
+            "Конкуренция, цены, топ-продавцы на WB/OZON\n\n"
+            "📅 *Сезонность* — /season `товар`\n"
+            "Пики и спады продаж по месяцам, лучшее время входа\n\n"
+            "🏭 *Поставщики* — /supplier `товар`\n"
+            "Поставщики на 1688/Alibaba: цены и маржа\n\n"
+            "📦 *Полный анализ* — /full `товар`\n"
+            "Все три отчёта сразу: ниша + сезонность + поставщики\n\n"
+            "Пример: `/nicha кокосовое масло`\n"
+            "Купить кредиты: /buy → Аналитика",
             parse_mode="Markdown",
         )
     elif text == "💰 Мой баланс":
@@ -1766,20 +1795,24 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if d == "buy_section_analytics":
         await q.message.edit_text(
             "📊 *Аналитика для маркетплейсов*\n\n"
-            "🔍 *Анализ ниши* — конкуренция, цены, лидеры\n"
-            "   499 ₽\n"
-            "📅 *Анализ товаров + сезонность* — когда входить, пик продаж\n"
-            "   999 ₽\n"
-            "🏭 *Поиск поставщиков* — цены на 1688/Alibaba\n"
-            "   1 999 ₽\n"
-            "📦 *Полный анализ* — ниша + сезон + поставщики (экономия 720₽)\n"
-            "   3 777 ₽",
+            "🔍 *Анализ ниши* — 499 ₽\n"
+            "Конкуренция, цены, топ-продавцы на WB/OZON. "
+            "Узнай насколько перегрета ниша перед входом.\n\n"
+            "📅 *Анализ товаров + сезонность* — 999 ₽\n"
+            "Лучшее время входа на рынок, пики и спады продаж по месяцам, "
+            "прогноз спроса. Не зайди в несезон.\n\n"
+            "🏭 *Поставщики* — 1 333 ₽\n"
+            "Поиск поставщиков на 1688 и Alibaba: цены, маржа, условия. "
+            "Только этот отчёт.\n\n"
+            "📦 *Полный анализ* — 2 499 ₽ _(экономия 332₽)_\n"
+            "Включает ВСЕ ТРИ отчёта: ниша + сезонность + поставщики. "
+            "Полная картина перед запуском товара.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔍 Анализ ниши — 499 ₽",              callback_data="plan_analytics_nicha")],
-                [InlineKeyboardButton("📅 Анализ товаров + сезон — 999 ₽",   callback_data="plan_analytics_season")],
-                [InlineKeyboardButton("🏭 Поставщики — 1 999 ₽",             callback_data="plan_analytics_supplier")],
-                [InlineKeyboardButton("📦 Полный анализ — 3 777 ₽",          callback_data="plan_analytics_full")],
+                [InlineKeyboardButton("🔍 Анализ ниши — 499 ₽",            callback_data="plan_analytics_nicha")],
+                [InlineKeyboardButton("📅 Сезонность — 999 ₽",             callback_data="plan_analytics_season")],
+                [InlineKeyboardButton("🏭 Поставщики — 1 333 ₽",           callback_data="plan_analytics_supplier")],
+                [InlineKeyboardButton("📦 Полный анализ — 2 499 ₽",        callback_data="plan_analytics_full")],
                 [InlineKeyboardButton("← Назад", callback_data="buy_main")],
             ]),
         )
