@@ -1158,91 +1158,44 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         del get_user(uid)["awaiting_transfer"]
 
-        # Сразу отвечаем пользователю — коротко и чисто
+        user_obj     = update.effective_user
+        first_name   = user_obj.first_name or ""
+        last_name    = user_obj.last_name or ""
+        full_name    = (first_name + " " + last_name).strip() or f"ID {uid}"
+        method_label = "РФ карта" if method == "ru_card" else "Visa Revolut"
+        photo        = update.message.photo[-1]
+
+        # 1. Сразу успокаиваем пользователя
         await update.message.reply_text(
-            "✅ *Скриншот получен!*\n\n"
-            "Проверяем оплату, баланс будет пополнен автоматически.\n"
-            "Ожидай уведомления 🙏",
-            parse_mode="Markdown",
+            "📨 Скриншот получен!\n\n"
+            "Проверяем оплату вручную — обычно это занимает несколько минут.\n"
+            "Как только подтвердим, баланс пополнится автоматически 🙏",
         )
 
-        # ── ИИ-верификация скриншота ──
-        photo = update.message.photo[-1]
-        file = await context.bot.get_file(photo.file_id)
-        screenshot_path = f"/tmp/transfer_{uid}.jpg"
-        await file.download_to_drive(screenshot_path)
+        # 2. Шлём владельцу фото с кнопками ✅/❌
+        if not OWNER_ID:
+            logging.error("OWNER_ID not set — transfer screenshot not forwarded!")
+            return
 
-        auto_confirmed = False
+        caption = (
+            f"💳 Новый перевод\n\n"
+            f"👤 {full_name} (@{user_obj.username or 'без username'}, ID: {uid})\n"
+            f"💰 {expected_amount} {currency} — {method_label}\n"
+            f"📦 Тариф: {p['name']}\n\n"
+            f"Нажми ✅ чтобы подтвердить оплату и пополнить баланс."
+        )
         try:
-            with open(screenshot_path, "rb") as f:
-                img_b64 = base64.b64encode(f.read()).decode()
-            verify_resp = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                    {"type": "text", "text": (
-                        f"Analyze this payment screenshot carefully for fraud detection.\n\n"
-                        f"Expected: a COMPLETED bank transfer of {expected_amount} {currency}.\n\n"
-                        f"Check ALL of the following:\n"
-                        f"1. Does it look like a REAL banking app screenshot (consistent UI, real fonts, no editing artifacts)?\n"
-                        f"2. Is the transfer status clearly COMPLETED/SUCCESSFUL ('Успешно', 'Выполнен', 'Completed', green checkmark)?\n"
-                        f"3. Does the amount match approximately {expected_amount} {currency}?\n"
-                        f"4. Are there signs of photo editing, copy-paste artifacts, inconsistent text, or fake-looking elements?\n"
-                        f"5. Is the date/time realistic (not future date, not too old)?\n\n"
-                        f"Reply ONLY 'YES' (all checks pass, looks genuine) or 'NO' (any check fails or suspicious)."
-                    )},
-                ]}],
-                max_tokens=5,
+            await context.bot.send_photo(
+                OWNER_ID,
+                photo.file_id,
+                caption=caption,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("✅ Подтвердить", callback_data=f"owner_confirm_{uid}_{pid}"),
+                    InlineKeyboardButton("❌ Отклонить",   callback_data=f"owner_reject_{uid}"),
+                ]]),
             )
-            answer = verify_resp.choices[0].message.content.strip().upper()
-            auto_confirmed = "YES" in answer
         except Exception as e:
-            logging.warning(f"AI transfer verification failed: {e}")
-        finally:
-            try: os.remove(screenshot_path)
-            except OSError: pass
-
-        if auto_confirmed:
-            # Авто-подтверждение — перевод выглядит валидным
-            apply_plan(uid, pid)
-            await update.message.reply_text(
-                f"🎉 *Оплата подтверждена!*\n\n"
-                f"{p['emoji']} *{p['name']}* активирован.\n\n"
-                f"{credits_display(uid)}\n\n"
-                f"Присылай фото товаров! 🎨",
-                parse_mode="Markdown",
-                reply_markup=main_menu_keyboard(),
-            )
-            # Уведомляем владельца (информационно)
-            if OWNER_ID and OWNER_ID != uid:
-                try:
-                    user_obj = update.effective_user
-                    await context.bot.send_photo(
-                        OWNER_ID, photo.file_id,
-                        caption=f"✅ Авто-подтверждено\n{user_tag(user_obj)} | {p['emoji']} {p['name']} | {expected_amount}{currency}",
-                    )
-                except Exception: pass
-        else:
-            # ИИ не уверен — отправляем владельцу для ручной проверки с кнопками
-            if OWNER_ID:
-                try:
-                    user_obj = update.effective_user
-                    method_label = "РФ карта" if method == "ru_card" else "Revolut"
-                    await context.bot.send_photo(
-                        OWNER_ID, photo.file_id,
-                        caption=(
-                            f"⚠️ Требует проверки\n\n"
-                            f"Пользователь: {user_tag(user_obj)}\n"
-                            f"Способ: {method_label}\n"
-                            f"Тариф: {p['emoji']} {p['name']} ({expected_amount}{currency})"
-                        ),
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("✅ Подтвердить", callback_data=f"owner_confirm_{uid}_{pid}"),
-                             InlineKeyboardButton("❌ Отклонить",   callback_data=f"owner_reject_{uid}")],
-                        ]),
-                    )
-                except Exception as e:
-                    logging.warning(f"Failed to send to owner: {e}")
+            logging.error(f"Failed to forward transfer to owner: {e}")
         return
 
     if not has_access(uid):
@@ -1888,37 +1841,40 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plan_id = parts[3]
         apply_plan(target_uid, plan_id)
         p = PLANS[plan_id]
-        await q.message.edit_caption(
-            caption=q.message.caption + "\n\n✅ *Подтверждено*",
-            parse_mode="Markdown",
-        )
+        # Update caption without parse_mode to avoid Markdown errors
+        try:
+            await q.message.edit_caption(caption=q.message.caption + "\n\n✅ ПОДТВЕРЖДЕНО")
+        except Exception:
+            pass
         try:
             await context.bot.send_message(
                 target_uid,
-                f"🎉 *Оплата подтверждена!*\n\n"
-                f"{p['emoji']} *{p['name']}* активирован.\n\n"
-                f"{credits_display(target_uid)}\n\nПрисылай фото товаров! 🎨",
-                parse_mode="Markdown",
+                f"🎉 Оплата подтверждена!\n\n"
+                f"{p['emoji']} {p['name']} активирован.\n\n"
+                f"Присылай фото товаров!",
             )
-        except Exception: pass
+        except Exception:
+            pass
+        await q.answer("✅ Баланс пополнен!", show_alert=True)
         return
 
     if d.startswith("owner_reject_"):
         if uid != OWNER_ID:
             return
         target_uid = int(d.split("_")[2])
-        await q.message.edit_caption(
-            caption=q.message.caption + "\n\n❌ *Отклонено*",
-            parse_mode="Markdown",
-        )
+        try:
+            await q.message.edit_caption(caption=q.message.caption + "\n\n❌ ОТКЛОНЕНО")
+        except Exception:
+            pass
         try:
             await context.bot.send_message(
                 target_uid,
-                "❌ *Оплата не подтверждена.*\n\n"
-                "Скриншот не прошёл проверку. Попробуй ещё раз или выбери другой способ оплаты /buy.",
-                parse_mode="Markdown",
+                "❌ Оплата не подтверждена.\n\n"
+                "Попробуй отправить скриншот ещё раз или выбери другой способ оплаты /buy.",
             )
-        except Exception: pass
+        except Exception:
+            pass
+        await q.answer("❌ Отклонено", show_alert=True)
         return
 
     if d == "how":
