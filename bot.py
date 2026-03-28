@@ -3,6 +3,7 @@ import json
 import re
 import base64
 import logging
+import random
 import urllib.request
 import httpx
 from datetime import datetime, timedelta, timezone
@@ -34,6 +35,39 @@ YOOKASSA_TOKEN     = os.getenv("YOOKASSA_TOKEN", "")
 CRYPTO_BOT_TOKEN   = os.getenv("CRYPTO_BOT_TOKEN", "")
 CRYPTO_BOT_API     = "https://pay.crypt.bot/api"
 OWNER_ID           = int(os.getenv("OWNER_ID", "0"))
+ADMIN_ID           = int(os.getenv("ADMIN_ID", str(os.getenv("OWNER_ID", "0"))))
+
+# ── TELEGRAM STARS PRODUCTS ───────────────────────────────────────────────────────
+PRODUCTS = {
+    "infographic_10": {
+        "title": "10 инфографик",
+        "description": "10 профессиональных карточек для WB/OZON",
+        "stars": 250,
+        "credits_infographic": 10,
+        "credits_analysis": 0,
+    },
+    "infographic_30": {
+        "title": "30 инфографик + аналитика",
+        "description": "30 инфографик + 999 анализов ниш на 30 дней",
+        "stars": 500,
+        "credits_infographic": 30,
+        "credits_analysis": 999,
+    },
+    "analysis_pack": {
+        "title": "Пакет аналитики ×10",
+        "description": "10 полных анализов (ниша + сезон + поставщики)",
+        "stars": 400,
+        "credits_infographic": 0,
+        "credits_analysis": 10,
+    },
+    "all_in_one": {
+        "title": "Всё включено на месяц",
+        "description": "30 инфографик + 20 анализов + приоритет",
+        "stars": 750,
+        "credits_infographic": 30,
+        "credits_analysis": 20,
+    },
+}
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 logging.basicConfig(level=logging.INFO)
@@ -403,33 +437,79 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
     if user_caption:
         scene = user_caption  # Пожелания клиента = описание сцены
 
-    prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+    style = random.randint(0, 3)
 
-⚠️ MANDATORY — SCENE & SETTING:
-Place the product in this exact setting: «{scene}»
-This is LAW. If it says "on a piano" — product STANDS on a piano. If "light interior" — background is bright/white/beige, NOT dark. Follow LITERALLY.
+    if style == 0:
+        # Arrows pointing to product
+        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
 
-DESIGN REQUIREMENTS (premium competitor level):
-1. PRODUCT from the attached photo is the hero — large, centered or slightly offset, occupying 40-50% of the frame. Must look EXACTLY like the original photo.
-2. RICH DECORATIVE SCENE around the product: ingredients, flowers, leaves, fabrics, lifestyle elements that create atmosphere and match the product's identity. Scene should feel ALIVE and luxurious.
-3. LIGHTING: soft warm bokeh lights, golden glow, depth of field — create a premium lifestyle photography feel.
+⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
 
-TEXT ON THE IMAGE (ALL TEXT MUST BE IN RUSSIAN):
-4. TITLE: «{title}» — very large bold serif or display font at the TOP. Color: warm cream/ivory/gold tone that matches the scene.
-5. SUBTITLE: «{subtitle}» — elegant italic font below title, slightly smaller. Warm muted color.
-6. FEATURES placed AROUND the product on all sides with ARROW LINES or POINTER LINES connecting each feature text to the relevant part of the product:
+DESIGN: PRODUCT is the hero — large, centered, 40-50% of frame. Exact look from the photo.
+Rich decorative scene around product: flowers, leaves, fabrics, ingredients, lifestyle props.
+LIGHTING: warm bokeh, golden glow, depth of field.
+
+TEXT (ALL IN RUSSIAN):
+- TITLE «{title}» — very large bold serif at TOP, warm cream/gold color
+- SUBTITLE «{subtitle}» — elegant italic below title
+- FEATURES with thin curved ARROW LINES pointing from text to product:
 {feat_text}
-   Each feature should have a thin elegant arrow/line pointing toward the product. Features positioned: top-left, top-right, bottom-left, bottom-right — distributed evenly around the product.
-7. Feature text: clean sans-serif font, warm tones (cream, beige, light gold). Each feature in a slightly different position for dynamic layout.
+  Arrows: elegant, thin, curved — not straight. Each feature label at a corner: top-left, top-right, bottom-left, bottom-right.
 
-TYPOGRAPHY RULES:
-- Title: 2-3x bigger than features, bold serif or elegant display font
-- Subtitle: italic or light weight, smaller than title
-- Features: clean, readable, medium size with connecting arrows
-- ALL text in warm tones (cream, ivory, gold, beige) — NO plain black or pure white text
-- Text should have subtle shadow or glow for readability
+STYLE: Premium luxury marketplace card with arrow callouts. Warm, atmospheric, depth. NOT flat."""
 
-OVERALL STYLE: Premium marketplace infographic. Rich, warm, atmospheric, with depth. Like a luxury brand product shot with elegant overlaid typography and arrow callouts. NOT flat, NOT template-looking, NOT boring."""
+    elif style == 1:
+        # Clean modern — no arrows, floating text blocks
+        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+
+⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
+
+DESIGN: PRODUCT occupies center-right or center, 40-50% of frame. Clean, editorial look.
+Background: atmospheric lifestyle scene — minimal decorative elements, clean & sophisticated.
+LIGHTING: soft studio-like, even, clean.
+
+TEXT LAYOUT (ALL IN RUSSIAN):
+- TITLE «{title}» — large bold sans-serif at TOP LEFT, white or cream
+- SUBTITLE «{subtitle}» — lighter weight below title
+- FEATURES as FLOATING TEXT BLOCKS (no arrows) — small pill-shaped or rounded labels placed near the product but NOT connected by lines. Use semi-transparent dark backdrop behind each label.
+{feat_text}
+
+STYLE: Modern, clean, editorial. Like a premium brand lookbook. No arrows, no callout lines. Pure typographic confidence."""
+
+    elif style == 2:
+        # Side panel layout
+        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+
+⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
+
+LAYOUT: Product on the RIGHT side (60% width), TEXT PANEL on the LEFT (40% width).
+Left panel: semi-transparent overlay (dark or light matching scene), vertical list of text.
+Product: large, slightly cropped at edges, atmospheric scene behind it.
+
+TEXT PANEL (ALL IN RUSSIAN):
+- «{title}» — large bold title at top of panel
+- «{subtitle}» — subtitle below
+- Feature list (no arrows, simple bullets or dashes):
+{feat_text}
+
+STYLE: Magazine split-layout. Premium, confident, structured. Scene bleeds from right side into background."""
+
+    else:
+        # Minimal — big title, features as badges
+        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+
+⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
+
+DESIGN: Product dominates — large, centered, 50-60% of frame. Minimal distractions.
+Background: deep bokeh, rich scene depth, cinematic feel.
+
+TEXT (ALL IN RUSSIAN):
+- «{title}» — HUGE title text, top area, bold serif, gold or cream
+- «{subtitle}» — small elegant subtitle below title
+- FEATURE BADGES: small rounded rectangular tags scattered around the product (NOT connected by arrows). Each badge has a subtle glow or shadow. Light text on semi-transparent dark background.
+{feat_text}
+
+STYLE: Cinematic hero shot. Minimal text, maximum product presence. Like a luxury perfume ad."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -663,7 +743,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     """Постоянное меню снизу экрана."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton("📸 Сгенерировать карточку"), KeyboardButton("💡 Мои карточки")],
+            [KeyboardButton("📸 Сгенерировать карточку"), KeyboardButton("📝 SEO-текст")],
             [KeyboardButton("🛒 Купить"),                 KeyboardButton("🎁 Промокод")],
             [KeyboardButton("📊 Аналитика"),              KeyboardButton("📌 Памятка")],
             [KeyboardButton("🆘 Поддержка")],
@@ -683,9 +763,22 @@ def plans_keyboard():
     return InlineKeyboardMarkup(rows)
 
 
+def stars_keyboard():
+    """Keyboard showing Stars packages (PRODUCTS)."""
+    rows = []
+    for pid, p in PRODUCTS.items():
+        rows.append([InlineKeyboardButton(
+            f"⭐ {p['title']} — {p['stars']} Stars",
+            callback_data=f"stars_{pid}",
+        )])
+    rows.append([InlineKeyboardButton("💳 Оплатить рублями/крипто", callback_data="buy")])
+    return InlineKeyboardMarkup(rows)
+
+
 def payment_keyboard(plan_id: str):
     p = PLANS[plan_id]
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"⭐ Telegram Stars",                    callback_data=f"stars_buy_{plan_id}")],
         [InlineKeyboardButton(f"🏦 Перевод на карту  {p['price_rub']} ₽", callback_data=f"pay_transfer_{plan_id}")],
         [InlineKeyboardButton(f"🌐 Visa Revolut  {p['price_usdt']}$",  callback_data=f"pay_revolut_{plan_id}")],
         [InlineKeyboardButton(f"₮ USDT  {p['price_usdt']}$",          callback_data=f"pay_crypto_{plan_id}_USDT"),
@@ -758,20 +851,42 @@ def is_critical_error(e: Exception) -> bool:
 # ── HANDLERS ─────────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    get_user(uid)
+    username = update.effective_user.username
+
+    # Handle referral parameter
+    referrer_id = None
+    if context.args and context.args[0].startswith("REF_"):
+        try:
+            referrer_id = int(context.args[0].replace("REF_", ""))
+            if referrer_id == uid:
+                referrer_id = None
+        except Exception:
+            pass
+
+    is_new = await userdb.register_user(uid, referrer_id, username)
+    get_user(uid)  # ensure in-memory record exists
+
+    if is_new and referrer_id:
+        try:
+            await context.bot.send_message(
+                referrer_id,
+                f"👤 По твоей ссылке зарегистрировался новый пользователь!\n"
+                f"Ты получишь *30% с его покупок*.",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
+
     await update.message.reply_text(
-        "🏆 *TOP SELLER — AI Карточки для маркетплейсов*\n\n"
-        "Превращаю обычные фото товаров в *продающие инфографики* "
-        "для Wildberries, OZON, Яндекс Маркет и любых других площадок.\n\n"
-        "📸 *Как пользоваться:*\n"
-        "1. Отправь фото товара\n"
-        "2. ИИ создаст красивую сцену с товаром\n"
-        "3. Получи готовую карточку 1080×1080\n\n"
-        "💡 *Совет:* добавь подпись к фото с пожеланиями!\n"
-        "_Пример: «подушка, светлый интерьер, на диване, с цветами»_\n"
-        "Результат будет точно соответствовать твоим пожеланиям.\n\n"
-        f"🎁 У тебя *{FREE_CREDITS} бесплатная* карточка.\n\n"
-        "⬇️ Выбери действие:",
+        "🏆 *TOP SELLER* — твой ИИ-ассистент для маркетплейсов\n\n"
+        "Что я умею:\n"
+        "📸 *Инфографика* — отправь фото товара → получи карточку 1080×1080 для WB/OZON/Яндекс Маркет\n"
+        "📝 *SEO-текст* — название, описание и ключевые слова для маркетплейса\n"
+        "🔍 *Анализ ниши* — конкуренция, цены, лидеры рынка\n"
+        "📅 *Сезонность* — когда входить, когда пик продаж\n"
+        "🏭 *Поставщики* — цены и ссылки на 1688/Alibaba\n\n"
+        "💡 *Совет:* добавь подпись к фото — _«подушка, светлый интерьер, на диване»_\n\n"
+        f"🎁 Тебе доступна *{FREE_CREDITS} бесплатная* карточка. Начинай!",
         parse_mode="Markdown",
         reply_markup=main_menu_keyboard(),
     )
@@ -779,15 +894,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🛒 *Выбери тариф:*\n\n"
-        "🎨 1 карточка — 60 ₽\n"
-        "📝 SEO-текст — 50 ₽\n"
-        "🎯 Комбо (карточка + SEO) — 100 ₽\n"
-        "🚀 Старт — 10 карточек | 490 ₽\n"
-        "💎 Про — 30 карточек | 990 ₽\n"
-        "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽",
+        "🛒 *Купить пакет*\n\n"
+        "⭐ *Telegram Stars* — быстро, без банков:\n"
+        "• 10 инфографик — 250 Stars\n"
+        "• 30 инфографик + аналитика — 500 Stars\n"
+        "• Пакет аналитики ×10 — 400 Stars\n"
+        "• Всё включено на месяц — 750 Stars\n\n"
+        "💳 *Рублями / криптой:*\n"
+        "🎨 1 карточка — 60 ₽  |  📝 SEO — 50 ₽\n"
+        "🚀 Старт 10шт — 490 ₽  |  💎 Про 30шт — 990 ₽",
         parse_mode="Markdown",
-        reply_markup=plans_keyboard(),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⭐ Оплатить Stars", callback_data="buy_stars")],
+            [InlineKeyboardButton("💳 Рубли / Крипто", callback_data="buy")],
+        ]),
     )
 
 
@@ -1217,6 +1337,40 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    if text == "📝 SEO-текст":
+        data = get_user(uid).get("last_product_data")
+        if not data:
+            await update.message.reply_text(
+                "📝 *SEO-текст*\n\n"
+                "Сначала сгенерируй карточку товара — отправь фото.\n"
+                "После генерации SEO-текст создастся на основе твоего товара.",
+                parse_mode="Markdown",
+            )
+        elif not has_seo_access(uid):
+            await update.message.reply_text(
+                "📝 *SEO-текст — 50 ₽*\n\n"
+                "Получи продающее название, описание и ключевые слова для WB/OZON/Яндекс Маркет.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📝 SEO — 50 ₽", callback_data="plan_seo")],
+                    [InlineKeyboardButton("🎯 Комбо (карточка+SEO) — 100 ₽", callback_data="plan_combo")],
+                ]),
+            )
+        else:
+            await update.message.reply_text("⏳ Генерирую SEO-текст...")
+            try:
+                user_caption = get_user(uid).get("last_user_caption", "")
+                seo_text = generate_seo_text(data, user_caption)
+                consume_seo(uid)
+                await update.message.reply_text(
+                    f"📝 *SEO-текст готов!*\n\n{seo_text}\n\n{credits_display(uid)}",
+                    parse_mode="Markdown",
+                )
+            except Exception as e:
+                logging.exception(e)
+                await update.message.reply_text("😔 Не удалось сгенерировать SEO. Попробуй ещё раз.")
+        return
+
     if text == "📸 Сгенерировать карточку":
         await update.message.reply_text(
             "📸 *Отправь фото товара* — я создам карточку для маркетплейса!\n\n"
@@ -1342,6 +1496,49 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.exception(e)
             await q.message.reply_text("😔 Не удалось сгенерировать SEO. Попробуй ещё раз.")
+        return
+
+    if d.startswith("stars_buy_"):
+        # Stars payment for a PLANS-based plan (via payment_keyboard)
+        plan_id = d.replace("stars_buy_", "")
+        p = PLANS.get(plan_id)
+        if not p:
+            return
+        # Map PLANS price_rub to approximate Stars (1 Star ≈ ~2₽)
+        stars_amount = max(1, round(p["price_rub"] / 2))
+        await context.bot.send_invoice(
+            chat_id=uid,
+            title=f"{p['emoji']} {p['name']}",
+            description=p["description"],
+            payload=f"plan_{plan_id}:{uid}",
+            currency="XTR",
+            prices=[LabeledPrice(p["name"], stars_amount)],
+        )
+        return
+
+    if d.startswith("stars_"):
+        # Stars payment for PRODUCTS
+        product_id = d.replace("stars_", "")
+        product = PRODUCTS.get(product_id)
+        if not product:
+            return
+        await context.bot.send_invoice(
+            chat_id=uid,
+            title=product["title"],
+            description=product["description"],
+            payload=f"{product_id}:{uid}",
+            currency="XTR",
+            prices=[LabeledPrice(product["title"], product["stars"])],
+        )
+        return
+
+    if d == "buy_stars":
+        await q.message.reply_text(
+            "⭐ *Оплата Telegram Stars*\n\n"
+            "Выбери пакет:",
+            parse_mode="Markdown",
+            reply_markup=stars_keyboard(),
+        )
         return
 
     if d.startswith("buy_analytics_"):
@@ -1558,15 +1755,138 @@ async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid     = update.effective_user.id
-    payload = update.message.successful_payment.invoice_payload
+    payment = update.message.successful_payment
+    payload = payment.invoice_payload
+    stars_paid = payment.total_amount
+    tg_payment_id = payment.telegram_payment_charge_id
+
     if payload.startswith("plan_"):
-        apply_plan(uid, payload[5:])
-        p = PLANS[payload[5:]]
+        # Plan paid via Stars (from payment_keyboard → stars_buy_ callback)
+        raw = payload  # "plan_start:123456" or "plan_start"
+        parts = raw.split(":")
+        plan_key = parts[0][5:]  # strip "plan_"
+        apply_plan(uid, plan_key)
+        p = PLANS[plan_key]
+        await userdb.save_stars_transaction(uid, plan_key, stars_paid, tg_payment_id)
         await update.message.reply_text(
             f"🎉 *Оплата прошла!* {p['emoji']} *{p['name']}* активирован.\n\n"
             f"{credits_display(uid)}\n\nПрисылай фото товаров!",
             parse_mode="Markdown",
         )
+
+    elif ":" in payload:
+        # PRODUCTS Stars payment: "product_id:user_id"
+        parts = payload.split(":")
+        product_id = parts[0]
+        product = PRODUCTS.get(product_id)
+        if not product:
+            return
+
+        # Add infographic credits to in-memory store
+        inf_credits = product["credits_infographic"]
+        ana_credits = product["credits_analysis"]
+        if inf_credits > 0:
+            u = get_user(uid)
+            u["credits"] = u.get("credits", 0) + inf_credits
+        if ana_credits > 0:
+            await userdb.add_analytics_credits(uid, ana_credits)
+
+        await userdb.save_stars_transaction(uid, product_id, stars_paid, tg_payment_id)
+
+        # Referral reward (30%)
+        referrer_id = await userdb.get_referrer(uid)
+        if referrer_id:
+            reward = max(1, int(stars_paid * 0.30))
+            await userdb.add_referral_reward(referrer_id, uid, stars_paid, reward)
+            try:
+                total = await userdb.get_total_referral_reward(referrer_id)
+                await context.bot.send_message(
+                    referrer_id,
+                    f"🎉 Твой реферал купил пакет!\n"
+                    f"Ты получил бонус: *{reward} ⭐*\n"
+                    f"Всего заработано: *{total} ⭐*\n\n"
+                    f"Вывести: /withdraw",
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
+
+        lines = []
+        if inf_credits:
+            lines.append(f"🎨 Инфографик: +{inf_credits}")
+        if ana_credits:
+            lines.append(f"📊 Анализов: +{ana_credits}")
+        await update.message.reply_text(
+            f"✅ *Оплата получена!* {stars_paid} ⭐\n\n"
+            f"Начислено:\n" + "\n".join(lines) + f"\n\n{credits_display(uid)}",
+            parse_mode="Markdown",
+        )
+
+
+# ── РЕФЕРАЛЬНАЯ СИСТЕМА ───────────────────────────────────────────────────────────
+async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    await userdb.register_user(uid)
+    bot_username = (await context.bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start=REF_{uid}"
+    total = await userdb.get_total_referral_reward(uid)
+    withdrawable = await userdb.get_withdrawable_stars(uid)
+    await update.message.reply_text(
+        f"🤝 *Реферальная программа*\n\n"
+        f"Приглашай друзей и получай *30% с каждой их покупки* в Telegram Stars.\n\n"
+        f"Твоя ссылка:\n`{ref_link}`\n\n"
+        f"⭐ Заработано всего: *{total} Stars*\n"
+        f"💸 Доступно к выводу: *{withdrawable} Stars*\n\n"
+        f"Вывод: /withdraw",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    withdrawable = await userdb.get_withdrawable_stars(uid)
+    if withdrawable < 50:
+        await update.message.reply_text(
+            f"💸 *Вывод Stars*\n\n"
+            f"Доступно: *{withdrawable} ⭐*\n\n"
+            f"Минимальная сумма вывода — 50 Stars.\n"
+            f"Продолжай приглашать друзей! /ref",
+            parse_mode="Markdown",
+        )
+        return
+    await userdb.request_withdrawal(uid, withdrawable)
+    username = update.effective_user.username or str(uid)
+    if OWNER_ID:
+        await context.bot.send_message(
+            OWNER_ID,
+            f"💸 *Заявка на вывод Stars*\n\n"
+            f"User: @{username} (ID: {uid})\n"
+            f"Сумма: *{withdrawable} ⭐*\n\n"
+            f"Выплати через Fragment или Telegram.",
+            parse_mode="Markdown",
+        )
+    await update.message.reply_text(
+        f"✅ Заявка на вывод *{withdrawable} ⭐* принята.\n\n"
+        f"Обработка в течение 24 часов.",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        return
+    stats = await userdb.get_admin_stats()
+    top = "\n".join(f"  #{i+1} user {r[0]}: {r[1]} рефералов" for i, r in enumerate(stats["top_refs"]))
+    await update.message.reply_text(
+        f"📊 *Статистика бота*\n\n"
+        f"👥 Всего пользователей: *{stats['total_users']}*\n"
+        f"💳 Всего покупок: *{stats['total_purchases']}*\n"
+        f"⭐ Всего Stars: *{stats['total_stars']}*\n\n"
+        f"📅 Сегодня покупок: *{stats['today']}*\n"
+        f"📅 За неделю: *{stats['week']}*\n\n"
+        f"🏆 Топ рефереры:\n{top or '  (нет данных)'}",
+        parse_mode="Markdown",
+    )
 
 
 # ── АНАЛИТИКА ─────────────────────────────────────────────────────────────────────
@@ -1768,14 +2088,16 @@ async def setup_bot(app):
         )
         await bot.set_my_commands([
             ("start",    "Запустить бота"),
-            ("buy",      "Купить карточки"),
+            ("buy",      "Купить пакет"),
             ("credits",  "Мой баланс"),
             ("promo",    "Ввести промокод"),
+            ("ref",      "Реферальная ссылка"),
+            ("withdraw", "Вывести Stars"),
             ("nicha",    "Анализ ниши"),
             ("season",   "Анализ сезонности"),
             ("supplier", "Поставщики на 1688"),
             ("full",     "Полный анализ"),
-            ("balance",  "Баланс кредитов"),
+            ("balance",  "Баланс аналитики"),
         ])
         logging.info("Bot description and commands set.")
     except Exception as e:
@@ -1802,6 +2124,9 @@ def main():
     app.add_handler(CommandHandler("supplier",  cmd_supplier))
     app.add_handler(CommandHandler("full",      cmd_full))
     app.add_handler(CommandHandler("balance",   cmd_balance))
+    app.add_handler(CommandHandler("ref",       cmd_ref))
+    app.add_handler(CommandHandler("withdraw",  cmd_withdraw))
+    app.add_handler(CommandHandler("stats",     cmd_stats))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
