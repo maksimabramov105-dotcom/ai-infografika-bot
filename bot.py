@@ -94,13 +94,37 @@ user_data: dict[int, dict] = {}
 _error_counts: dict[str, int] = {}
 
 
+UNLIMITED_MONTHLY_CAP = 1000  # Лимит генераций для безлимитного тарифа
+
+
 def get_user(uid: int) -> dict:
     if uid not in user_data:
-        user_data[uid] = {"credits": FREE_CREDITS, "seo_credits": 0, "unlimited_until": None, "pending": {}}
+        user_data[uid] = {
+            "credits": FREE_CREDITS, "seo_credits": 0,
+            "unlimited_until": None, "pending": {},
+            "monthly_count": 0, "monthly_reset": None,
+        }
     u = user_data[uid]
     if "seo_credits" not in u:
         u["seo_credits"] = 0
+    if "monthly_count" not in u:
+        u["monthly_count"] = 0
+        u["monthly_reset"] = None
     return u
+
+
+def _reset_monthly_if_needed(u: dict):
+    """Сбрасывает счётчик если наступил новый месяц."""
+    now = datetime.now(timezone.utc)
+    if not u["monthly_reset"] or now >= u["monthly_reset"]:
+        u["monthly_count"] = 0
+        # Следующий сброс — первое число следующего месяца
+        if now.month == 12:
+            u["monthly_reset"] = now.replace(year=now.year + 1, month=1, day=1,
+                                              hour=0, minute=0, second=0, microsecond=0)
+        else:
+            u["monthly_reset"] = now.replace(month=now.month + 1, day=1,
+                                              hour=0, minute=0, second=0, microsecond=0)
 
 
 def has_access(uid: int) -> bool:
@@ -108,7 +132,8 @@ def has_access(uid: int) -> bool:
         return True
     u = get_user(uid)
     if u["unlimited_until"] and datetime.now(timezone.utc) < u["unlimited_until"]:
-        return True
+        _reset_monthly_if_needed(u)
+        return u["monthly_count"] < UNLIMITED_MONTHLY_CAP
     return u["credits"] > 0
 
 
@@ -117,6 +142,8 @@ def consume(uid: int):
         return
     u = get_user(uid)
     if u["unlimited_until"] and datetime.now(timezone.utc) < u["unlimited_until"]:
+        _reset_monthly_if_needed(u)
+        u["monthly_count"] += 1
         return
     if u["credits"] > 0:
         u["credits"] -= 1
@@ -127,8 +154,11 @@ def credits_display(uid: int) -> str:
         return "👑 Владелец — безлимит"
     u = get_user(uid)
     if u["unlimited_until"] and datetime.now(timezone.utc) < u["unlimited_until"]:
+        _reset_monthly_if_needed(u)
+        used = u["monthly_count"]
+        remaining = UNLIMITED_MONTHLY_CAP - used
         until = u["unlimited_until"].strftime("%d.%m.%Y")
-        return f"♾️ Безлимит до {until}"
+        return f"♾️ Безлимит до {until} | Сгенерировано в этом месяце: *{used}/{UNLIMITED_MONTHLY_CAP}*"
     seo = u.get("seo_credits", 0)
     seo_str = f"\n📝 SEO-текстов: *{seo}*" if seo > 0 else ""
     return f"💡 Осталось карточек: *{u['credits']}*{seo_str}"
@@ -947,14 +977,27 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not has_access(uid):
-        await update.message.reply_text(
-            "😔 *Карточки закончились.*\n\nКупи пакет или активируй промокод:",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🛒 Купить карточки", callback_data="buy")],
-                [InlineKeyboardButton("🎁 Ввести промокод", callback_data="promo_input")],
-            ]),
-        )
+        u = get_user(uid)
+        # Проверяем: безлимит активен, но месячный лимит исчерпан
+        if u["unlimited_until"] and datetime.now(timezone.utc) < u["unlimited_until"]:
+            reset_date = u.get("monthly_reset")
+            reset_str = reset_date.strftime("%d.%m.%Y") if reset_date else "1-го числа"
+            await update.message.reply_text(
+                f"⚠️ *Достигнут месячный лимит генераций*\n\n"
+                f"В целях обеспечения качества сервиса для всех пользователей "
+                f"тариф «Безлимит» ограничен *{UNLIMITED_MONTHLY_CAP} карточками в месяц*.\n\n"
+                f"Лимит обновится *{reset_str}*. Увидимся! 🙏",
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_text(
+                "😔 *Карточки закончились.*\n\nКупи пакет или активируй промокод:",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🛒 Купить карточки", callback_data="buy")],
+                    [InlineKeyboardButton("🎁 Ввести промокод", callback_data="promo_input")],
+                ]),
+            )
         return
 
     msg = await update.message.reply_text("⏳ Анализирую товар...")
