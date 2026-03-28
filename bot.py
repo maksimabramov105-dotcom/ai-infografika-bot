@@ -18,6 +18,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes, filters,
 )
+from telegram.error import Conflict
 from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionError
 
 # ── CONFIG ───────────────────────────────────────────────────────────────────────
@@ -1227,6 +1228,14 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
+
+    async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
+        if isinstance(context.error, Conflict):
+            logging.warning("409 Conflict on startup — old instance still shutting down, retrying...")
+            return
+        logging.exception(context.error)
+
+    app.add_error_handler(error_handler)
     logging.info("Bot started.")
     app.run_polling(
         drop_pending_updates=True,
