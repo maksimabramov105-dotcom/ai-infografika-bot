@@ -2304,7 +2304,7 @@ async def cmd_nicha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            "🔍 *Анализ ниши* — 149₽\n\nКупи кредиты аналитики:",
+            "🔍 *Анализ ниши* — 499₽\n\nКупи кредиты аналитики:",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("nicha"),
         )
         return
@@ -2325,7 +2325,7 @@ async def cmd_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            "📅 *Анализ сезонности* — 149₽\n\nКупи кредиты аналитики:",
+            "📅 *Анализ сезонности* — 999₽\n\nКупи кредиты аналитики:",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("season"),
         )
         return
@@ -2347,7 +2347,7 @@ async def cmd_supplier(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            "🏭 *Поиск поставщиков* — 199₽\n\nКупи кредиты аналитики:",
+            "🏭 *Поиск поставщиков* — 1 333₽\n\nКупи кредиты аналитики:",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("supplier"),
         )
         return
@@ -2379,7 +2379,7 @@ async def cmd_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _check_analytics_credit(uid, 3):
         bal = await userdb.get_analytics_balance(uid)
         await update.message.reply_text(
-            f"📦 *Полный анализ* — 399₽\n\nНужно 3 кредита, у тебя: {bal}.",
+            f"📦 *Полный анализ* — 2 499₽\n\nНужно 3 кредита, у тебя: {bal}.",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("full"),
         )
         return
