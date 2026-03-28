@@ -1228,7 +1228,10 @@ def main():
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     logging.info("Bot started.")
-    app.run_polling()
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=["message", "callback_query", "pre_checkout_query"],
+    )
 
 
 if __name__ == "__main__":
