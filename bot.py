@@ -279,26 +279,33 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
     if user_caption:
         scene = user_caption  # Пожелания клиента = описание сцены
 
-    prompt = f"""Создай профессиональную инфографику-карточку товара для маркетплейса (Wildberries/OZON/Яндекс Маркет). Квадратный формат 1:1, 1080x1080.
+    prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
 
-⚠️ ГЛАВНОЕ ТРЕБОВАНИЕ — СЦЕНА И ОКРУЖЕНИЕ:
-Товар должен находиться в следующей обстановке: «{scene}»
-Это описание сцены — ЗАКОН. Если написано «на пианино» — товар СТОИТ на пианино. Если «светлый интерьер» — фон светлый/белый/бежевый, НЕ тёмный. Если «с цветами» — вокруг товара живые цветы. Выполняй БУКВАЛЬНО.
+⚠️ MANDATORY — SCENE & SETTING:
+Place the product in this exact setting: «{scene}»
+This is LAW. If it says "on a piano" — product STANDS on a piano. If "light interior" — background is bright/white/beige, NOT dark. Follow LITERALLY.
 
-ТРЕБОВАНИЯ К ДИЗАЙНУ:
-1. ТОВАР — главный элемент, крупно, реалистично. Занимает 45-55% кадра.
-2. ТОВАР должен выглядеть ТОЧНО как на приложенном фото — та же форма/упаковка/цвет/этикетка. НЕ искажай.
-3. Вокруг товара — красивые декоративные элементы, подходящие к сцене и товару.
-4. ТЕКСТ на карточке (НА РУССКОМ ЯЗЫКЕ):
-   - Заголовок: «{title}» — крупный жирный шрифт, контрастный, сверху карточки
-   - Подзаголовок: «{subtitle}» — изящный шрифт, меньше заголовка
-   - 4 преимущества разместить ВОКРУГ товара с разных сторон (не только снизу):
+DESIGN REQUIREMENTS (premium competitor level):
+1. PRODUCT from the attached photo is the hero — large, centered or slightly offset, occupying 40-50% of the frame. Must look EXACTLY like the original photo.
+2. RICH DECORATIVE SCENE around the product: ingredients, flowers, leaves, fabrics, lifestyle elements that create atmosphere and match the product's identity. Scene should feel ALIVE and luxurious.
+3. LIGHTING: soft warm bokeh lights, golden glow, depth of field — create a premium lifestyle photography feel.
+
+TEXT ON THE IMAGE (ALL TEXT MUST BE IN RUSSIAN):
+4. TITLE: «{title}» — very large bold serif or display font at the TOP. Color: warm cream/ivory/gold tone that matches the scene.
+5. SUBTITLE: «{subtitle}» — elegant italic font below title, slightly smaller. Warm muted color.
+6. FEATURES placed AROUND the product on all sides with ARROW LINES or POINTER LINES connecting each feature text to the relevant part of the product:
 {feat_text}
-5. ТИПОГРАФИКА: разные размеры и стили — крупный bold заголовок, elegant italic подзаголовок, чёткие labels. Текст органично вписан в дизайн.
-6. ЦВЕТА: элегантная палитра, текст читаем, всё гармонирует.
-7. КАЧЕСТВО: уровень профессионального дизайна топовых продавцов — красиво, нестандартно, уникально.
+   Each feature should have a thin elegant arrow/line pointing toward the product. Features positioned: top-left, top-right, bottom-left, bottom-right — distributed evenly around the product.
+7. Feature text: clean sans-serif font, warm tones (cream, beige, light gold). Each feature in a slightly different position for dynamic layout.
 
-Стиль: премиальная инфографика для маркетплейсов."""
+TYPOGRAPHY RULES:
+- Title: 2-3x bigger than features, bold serif or elegant display font
+- Subtitle: italic or light weight, smaller than title
+- Features: clean, readable, medium size with connecting arrows
+- ALL text in warm tones (cream, ivory, gold, beige) — NO plain black or pure white text
+- Text should have subtle shadow or glow for readability
+
+OVERALL STYLE: Premium marketplace infographic. Rich, warm, atmospheric, with depth. Like a luxury brand product shot with elegant overlaid typography and arrow callouts. NOT flat, NOT template-looking, NOT boring."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -310,6 +317,7 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
                 image=img_file,
                 prompt=prompt,
                 size="1024x1024",
+                quality="high",
             )
         img_data = result.data[0].b64_json
         if img_data:
