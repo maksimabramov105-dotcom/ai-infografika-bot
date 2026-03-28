@@ -55,6 +55,12 @@ async def init_db():
                 status TEXT DEFAULT 'pending',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS pending_transfers (
+                user_id INTEGER PRIMARY KEY,
+                plan_id TEXT NOT NULL,
+                method TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         await db.commit()
     logging.info("Database initialized.")
@@ -230,3 +236,38 @@ async def get_admin_stats() -> dict:
         "week": week_purchases,
         "top_refs": top_refs,
     }
+
+
+# ── PENDING TRANSFERS ──────────────────────────────────────────────────────────────
+
+async def save_pending_transfer(user_id: int, plan_id: str, method: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO pending_transfers (user_id, plan_id, method, created_at) VALUES (?,?,?,?)",
+            (user_id, plan_id, method, datetime.now(timezone.utc).isoformat()),
+        )
+        await db.commit()
+
+
+async def get_pending_transfer(user_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT plan_id, method FROM pending_transfers WHERE user_id = ?", (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return {"plan_id": row[0], "method": row[1]} if row else None
+
+
+async def delete_pending_transfer(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM pending_transfers WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+
+async def get_all_pending_transfers() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id, plan_id, method, created_at FROM pending_transfers ORDER BY created_at"
+        ) as cur:
+            rows = await cur.fetchall()
+    return [{"user_id": r[0], "plan_id": r[1], "method": r[2], "created_at": r[3]} for r in rows]

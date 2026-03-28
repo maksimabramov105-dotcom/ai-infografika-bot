@@ -1059,6 +1059,7 @@ async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Тариф «{plan_id}» не найден. Доступные: {', '.join(PLANS.keys())}")
         return
     apply_plan(target_uid, plan_id)
+    await userdb.delete_pending_transfer(target_uid)
     p = PLANS[plan_id]
     await update.message.reply_text(f"✅ Оплата подтверждена. {p['emoji']} {p['name']} активирован для {target_uid}.")
     try:
@@ -1072,6 +1073,25 @@ async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.warning(f"Could not notify user {target_uid}: {e}")
+
+
+async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для владельца: /pending — список ожидающих подтверждения переводов."""
+    if update.effective_user.id != OWNER_ID:
+        return
+    rows = await userdb.get_all_pending_transfers()
+    if not rows:
+        await update.message.reply_text("Нет ожидающих переводов.")
+        return
+    lines = ["📋 Ожидают подтверждения:\n"]
+    for r in rows:
+        p = PLANS.get(r["plan_id"], {})
+        method_label = "РФ карта" if r["method"] == "ru_card" else "Revolut"
+        lines.append(
+            f"• ID {r['user_id']} — {p.get('name', r['plan_id'])} ({method_label})\n"
+            f"  /confirm {r['user_id']} {r['plan_id']}"
+        )
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1149,6 +1169,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Если пользователь ждёт подтверждения перевода — принимаем скриншот
     transfer_info = get_user(uid).get("awaiting_transfer")
+    if not transfer_info:
+        transfer_info = await userdb.get_pending_transfer(uid)
+        if transfer_info:
+            get_user(uid)["awaiting_transfer"] = transfer_info  # restore in-memory
     if transfer_info:
         pid    = transfer_info["plan_id"]
         method = transfer_info["method"]
@@ -1157,6 +1181,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         currency = "₽" if method == "ru_card" else "$"
 
         del get_user(uid)["awaiting_transfer"]
+        await userdb.delete_pending_transfer(uid)
 
         user_obj     = update.effective_user
         first_name   = user_obj.first_name or ""
@@ -1737,6 +1762,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pid = d[13:]
         p   = PLANS[pid]
         get_user(uid)["awaiting_transfer"] = {"plan_id": pid, "method": "ru_card"}
+        await userdb.save_pending_transfer(uid, pid, "ru_card")
         await q.message.edit_text(
             f"🏦 *Перевод на карту (РФ)*\n\n"
             f"Номер карты: `{CARD_RU}`\n"
@@ -1753,6 +1779,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pid = d[12:]
         p   = PLANS[pid]
         get_user(uid)["awaiting_transfer"] = {"plan_id": pid, "method": "revolut"}
+        await userdb.save_pending_transfer(uid, pid, "revolut")
         await q.message.edit_text(
             f"🌐 *Оплата Visa Revolut (зарубежный банк)*\n\n"
             f"Номер карты: `{CARD_REVOLUT}`\n"
@@ -1840,6 +1867,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_uid = int(parts[2])
         plan_id = parts[3]
         apply_plan(target_uid, plan_id)
+        await userdb.delete_pending_transfer(target_uid)
         p = PLANS[plan_id]
         # Update caption without parse_mode to avoid Markdown errors
         try:
@@ -1862,6 +1890,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if uid != OWNER_ID:
             return
         target_uid = int(d.split("_")[2])
+        await userdb.delete_pending_transfer(target_uid)
         try:
             await q.message.edit_caption(caption=q.message.caption + "\n\n❌ ОТКЛОНЕНО")
         except Exception:
@@ -2266,6 +2295,7 @@ def main():
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CommandHandler("confirm",   cmd_confirm))
     app.add_handler(CommandHandler("reject",    cmd_reject))
+    app.add_handler(CommandHandler("pending",   cmd_pending))
     app.add_handler(CommandHandler("reply",     cmd_reply))
     app.add_handler(CommandHandler("nicha",     cmd_nicha))
     app.add_handler(CommandHandler("season",    cmd_season))
