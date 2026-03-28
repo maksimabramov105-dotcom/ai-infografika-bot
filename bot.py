@@ -155,6 +155,7 @@ PLANS = {
 # ── ХРАНИЛИЩЕ ────────────────────────────────────────────────────────────────────
 user_data: dict[int, dict] = {}
 active_generations: dict[int, asyncio.Task] = {}  # uid -> running generation task
+cancelled_users: set[int] = set()                  # uids that pressed Stop
 
 # Счётчик ошибок для авто-оповещения владельца
 _error_counts: dict[str, int] = {}
@@ -454,15 +455,25 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
 
     style = random.randint(0, 3)
 
-    # UNIVERSAL RULES applied in all styles:
-    # - Product ALWAYS centered, occupying exactly 55-65% of the frame
-    # - Rich, saturated, vibrant colors — NOT washed out
-    # - High-end typography variety: mix serif + sans-serif
-    # - Scene: lush, layered, atmospheric
+    # Pre-built rules injected at the top of every prompt
+    TEXT_ACCURACY_RULES = f"""⚠️ ABSOLUTE TEXT ACCURACY LAW — OBEY WITHOUT EXCEPTION ⚠️
+TITLE must be printed EXACTLY as: «{title}»
+SUBTITLE must be printed EXACTLY as: «{subtitle}»
+Features must be printed EXACTLY as given below.
+• Copy every letter, space, and punctuation CHARACTER BY CHARACTER.
+• DO NOT add, remove, or change even ONE letter.
+• DO NOT invent, translate, or rephrase any word.
+• «{title}» — memorize this spelling. Reproduce it perfectly.
+• NEVER render readable text on the product itself or its label.
+  If the product has a label, render it blurred/unreadable — all text goes in the overlay callouts ONLY.
+• Minimum 60px safe margin from ALL edges — no text cut off.
+• Every callout label must be COMPLETE — never cropped by the frame border.
+"""
 
     if style == 0:
         # STYLE: Arrow callouts — luxury annotated product card
-        prompt = f"""Create a STUNNING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create a STUNNING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
 🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
@@ -508,7 +519,8 @@ Rich colors, cinematic depth, gorgeous typography. NOT flat, NOT dull, NOT gener
 
     elif style == 1:
         # STYLE: Modern editorial — floating badges, no arrows
-        prompt = f"""Create a BREATHTAKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create a BREATHTAKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
 🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
@@ -551,7 +563,8 @@ Typography is the hero. Colors are muted but intentional. NOT sterile — textur
 
     elif style == 2:
         # STYLE: Dark dramatic — cinematic with vibrant accent color
-        prompt = f"""Create a VISUALLY STRIKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create a VISUALLY STRIKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
 🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
@@ -594,7 +607,8 @@ Extremely visual, premium, impossible to scroll past.
 
     else:
         # STYLE: Warm organic — lifestyle rich
-        prompt = f"""Create an EXQUISITE warm lifestyle product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create an EXQUISITE warm lifestyle product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
 🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
@@ -1297,11 +1311,26 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             user_caption = update.message.caption or ""
 
+            if uid in cancelled_users:
+                cancelled_users.discard(uid)
+                await msg.edit_text("⛔ Генерация остановлена.")
+                return
+
             await msg.edit_text("🔍 Анализирую товар...", reply_markup=stop_kb)
             data = analyze_product_image(img_path, user_caption=user_caption)
 
+            if uid in cancelled_users:
+                cancelled_users.discard(uid)
+                await msg.edit_text("⛔ Генерация остановлена.")
+                return
+
             await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...", reply_markup=stop_kb)
             out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
+
+            if uid in cancelled_users:
+                cancelled_users.discard(uid)
+                await msg.edit_text("⛔ Генерация остановлена.")
+                return
 
             if not out_path:
                 await msg.edit_text("😔 Не удалось сгенерировать. Попробуй ещё раз.")
@@ -1332,19 +1361,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                                   reply_markup=feedback_kb)
             await msg.delete()
 
-        except asyncio.CancelledError:
-            await msg.edit_text("⛔ Генерация остановлена.")
-            raise
         except Exception as e:
             logging.exception(e)
             err_text = user_error_message(e)
-            await msg.edit_text(err_text, parse_mode="Markdown")
+            try:
+                await msg.edit_text(err_text, parse_mode="Markdown")
+            except Exception:
+                pass
             if is_critical_error(e):
                 await notify_owner(context,
                     f"🚨 Критическая ошибка API!\n`{type(e).__name__}: {e}`\n\n"
                     "Проверь баланс OpenAI и Railway Variables.")
         finally:
             active_generations.pop(uid, None)
+            cancelled_users.discard(uid)
             for p in [img_path, out_path]:
                 if p:
                     try: os.remove(p)
@@ -1352,7 +1382,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     task = asyncio.create_task(_do_generate())
     active_generations[uid] = task
-    await task
+    # Do NOT await — runs as background task so stop_gen callback can fire
 
 
 async def handle_support_question(uid: int, question: str, context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -1419,25 +1449,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # ИИ-поддержка
+        # ИИ-поддержка — всегда уведомляем владельца
+        user_obj = update.effective_user
+        if OWNER_ID:
+            try:
+                await context.bot.send_message(
+                    OWNER_ID,
+                    f"🆘 *Вопрос в поддержку*\n\n"
+                    f"От: {user_tag(user_obj)} (ID: `{uid}`)\n"
+                    f"Вопрос: {esc(text)}\n\n"
+                    f"Ответить: `/reply {uid} ТЕКСТ`",
+                    parse_mode="Markdown",
+                )
+            except Exception as e:
+                logging.error(f"Failed to forward support msg to owner: {e}")
+
         answer = await handle_support_question(uid, text, context)
         if answer:
             await update.message.reply_text(answer, reply_markup=main_menu_keyboard())
         else:
-            # Эскалация к владельцу
-            user_obj = update.effective_user
-            if OWNER_ID:
-                try:
-                    await context.bot.send_message(
-                        OWNER_ID,
-                        f"🆘 *Вопрос в поддержку*\n\n"
-                        f"От: {user_tag(user_obj)} (ID: `{uid}`)\n"
-                        f"Вопрос: {esc(text)}\n\n"
-                        f"Ответить: `/reply {uid} ТЕКСТ`",
-                        parse_mode="Markdown",
-                    )
-                except Exception as e:
-                    logging.error(f"Failed to forward support msg to owner: {e}")
             await update.message.reply_text(
                 "📨 Вопрос передан в поддержку. Мы ответим в ближайшее время!",
                 reply_markup=main_menu_keyboard(),
