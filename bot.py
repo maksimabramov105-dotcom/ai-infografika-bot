@@ -51,25 +51,37 @@ FREE_CREDITS = 1
 PLANS = {
     "single": {
         "name": "1 карточка", "emoji": "🎨",
-        "credits": 1, "duration_days": None,
+        "credits": 1, "seo_credits": 0, "duration_days": None,
         "price_rub": 60, "price_usdt": 0.7, "price_ton": 7,
         "description": "1 карточка",
     },
+    "seo": {
+        "name": "SEO-текст", "emoji": "📝",
+        "credits": 0, "seo_credits": 1, "duration_days": None,
+        "price_rub": 50, "price_usdt": 0.6, "price_ton": 5,
+        "description": "1 SEO-текст для маркетплейса",
+    },
+    "combo": {
+        "name": "Комбо", "emoji": "🎯",
+        "credits": 1, "seo_credits": 1, "duration_days": None,
+        "price_rub": 100, "price_usdt": 1.1, "price_ton": 11,
+        "description": "1 карточка + SEO-текст",
+    },
     "start": {
         "name": "Старт", "emoji": "🚀",
-        "credits": 10, "duration_days": None,
+        "credits": 10, "seo_credits": 0, "duration_days": None,
         "price_rub": 490, "price_usdt": 5.0, "price_ton": 50,
         "description": "10 карточек",
     },
     "pro": {
         "name": "Про", "emoji": "💎",
-        "credits": 30, "duration_days": None,
+        "credits": 30, "seo_credits": 0, "duration_days": None,
         "price_rub": 990, "price_usdt": 10.0, "price_ton": 100,
         "description": "30 карточек",
     },
     "unlimited": {
         "name": "Безлимит", "emoji": "♾️",
-        "credits": -1, "duration_days": 30,
+        "credits": -1, "seo_credits": 0, "duration_days": 30,
         "price_rub": 9980, "price_usdt": 100.0, "price_ton": 1000,
         "description": "Безлимит на 30 дней",
     },
@@ -84,8 +96,11 @@ _error_counts: dict[str, int] = {}
 
 def get_user(uid: int) -> dict:
     if uid not in user_data:
-        user_data[uid] = {"credits": FREE_CREDITS, "unlimited_until": None, "pending": {}}
-    return user_data[uid]
+        user_data[uid] = {"credits": FREE_CREDITS, "seo_credits": 0, "unlimited_until": None, "pending": {}}
+    u = user_data[uid]
+    if "seo_credits" not in u:
+        u["seo_credits"] = 0
+    return u
 
 
 def has_access(uid: int) -> bool:
@@ -114,7 +129,23 @@ def credits_display(uid: int) -> str:
     if u["unlimited_until"] and datetime.now(timezone.utc) < u["unlimited_until"]:
         until = u["unlimited_until"].strftime("%d.%m.%Y")
         return f"♾️ Безлимит до {until}"
-    return f"💡 Осталось карточек: *{u['credits']}*"
+    seo = u.get("seo_credits", 0)
+    seo_str = f"\n📝 SEO-текстов: *{seo}*" if seo > 0 else ""
+    return f"💡 Осталось карточек: *{u['credits']}*{seo_str}"
+
+
+def has_seo_access(uid: int) -> bool:
+    if uid == OWNER_ID:
+        return True
+    return get_user(uid).get("seo_credits", 0) > 0
+
+
+def consume_seo(uid: int):
+    if uid == OWNER_ID:
+        return
+    u = get_user(uid)
+    if u.get("seo_credits", 0) > 0:
+        u["seo_credits"] -= 1
 
 
 def apply_plan(uid: int, plan_id: str):
@@ -127,6 +158,8 @@ def apply_plan(uid: int, plan_id: str):
         u["unlimited_until"] = base + timedelta(days=days)
     else:
         u["credits"] = u.get("credits", 0) + p["credits"]
+    if p.get("seo_credits", 0) > 0:
+        u["seo_credits"] = u.get("seo_credits", 0) + p["seo_credits"]
 
 
 # ── ПРОМОКОД ЛОГИКА ──────────────────────────────────────────────────────────────
@@ -349,6 +382,44 @@ OVERALL STYLE: Premium marketplace infographic. Rich, warm, atmospheric, with de
         logging.warning(f"gpt-image-1 generate fallback failed: {e2}")
 
     return None
+
+
+# ── SEO-ТЕКСТ ────────────────────────────────────────────────────────────────────
+def generate_seo_text(data: dict, user_caption: str = "") -> str:
+    title    = data.get("title", "Товар")
+    subtitle = data.get("subtitle", "")
+    features = data.get("features", [])
+    hint = f"\nДополнительный контекст: {user_caption}" if user_caption else ""
+
+    prompt = f"""Ты эксперт по SEO и продажам на маркетплейсах (Wildberries, OZON, Яндекс Маркет).
+Напиши полный продающий SEO-текст для карточки товара.
+
+Товар: {title}
+Подзаголовок: {subtitle}
+Характеристики: {', '.join(features)}{hint}
+
+Структура ответа (строго в этом порядке):
+
+**НАЗВАНИЕ ТОВАРА ДЛЯ МАРКЕТПЛЕЙСА**
+(SEO-оптимизированное название, 60-80 символов, включи ключевые слова)
+
+**ОПИСАНИЕ**
+(2-3 абзаца, продающий текст, включи ключевые слова органично, польза для покупателя)
+
+**ХАРАКТЕРИСТИКИ**
+(маркированный список, 5-8 пунктов с конкретными данными)
+
+**КЛЮЧЕВЫЕ СЛОВА**
+(15-20 поисковых запросов через запятую, по которым покупатели ищут этот товар)
+
+Пиши только по-русски. Текст должен быть живым, убедительным и SEO-оптимизированным."""
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1000,
+    )
+    return response.choices[0].message.content.strip()
 
 
 W, H = 1080, 1080
@@ -618,11 +689,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🛒 *Выбери тариф:*\n\n"
-        "🆓 Бесплатно — 1 карточка\n"
         "🎨 1 карточка — 60 ₽\n"
-        "🚀 Старт — 10 карточек | 490 ₽ / 5 USDT\n"
-        "💎 Про — 30 карточек | 990 ₽ / 10 USDT\n"
-        "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽ / 100 USDT",
+        "📝 SEO-текст — 50 ₽\n"
+        "🎯 Комбо (карточка + SEO) — 100 ₽\n"
+        "🚀 Старт — 10 карточек | 490 ₽\n"
+        "💎 Про — 30 карточек | 990 ₽\n"
+        "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽",
         parse_mode="Markdown",
         reply_markup=plans_keyboard(),
     )
@@ -802,15 +874,19 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open(screenshot_path, "rb") as f:
                 img_b64 = base64.b64encode(f.read()).decode()
             verify_resp = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": [
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
                     {"type": "text", "text": (
-                        f"This is a screenshot of a bank transfer. "
-                        f"Does it show a COMPLETED/SUCCESSFUL transfer of approximately "
-                        f"{expected_amount} {currency} or more? "
-                        f"Look for: confirmation status, green checkmark, 'Успешно', 'Выполнен', 'Completed', amount. "
-                        f"Reply ONLY 'YES' or 'NO'."
+                        f"Analyze this payment screenshot carefully for fraud detection.\n\n"
+                        f"Expected: a COMPLETED bank transfer of {expected_amount} {currency}.\n\n"
+                        f"Check ALL of the following:\n"
+                        f"1. Does it look like a REAL banking app screenshot (consistent UI, real fonts, no editing artifacts)?\n"
+                        f"2. Is the transfer status clearly COMPLETED/SUCCESSFUL ('Успешно', 'Выполнен', 'Completed', green checkmark)?\n"
+                        f"3. Does the amount match approximately {expected_amount} {currency}?\n"
+                        f"4. Are there signs of photo editing, copy-paste artifacts, inconsistent text, or fake-looking elements?\n"
+                        f"5. Is the date/time realistic (not future date, not too old)?\n\n"
+                        f"Reply ONLY 'YES' (all checks pass, looks genuine) or 'NO' (any check fails or suspicious)."
                     )},
                 ]}],
                 max_tokens=5,
@@ -903,6 +979,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         consume(uid)
+        # Сохраняем данные о товаре для последующей генерации SEO
+        get_user(uid)["last_product_data"] = data
+        get_user(uid)["last_user_caption"] = user_caption
 
         caption = (
             f"✅ *{data.get('title', '')}*\n"
@@ -911,7 +990,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + f"\n\n{credits_display(uid)}"
             + "\n\n💡 _Добавь подпись к фото для кастомизации_"
         )
+        # Кнопки: SEO + обратная связь
+        if has_seo_access(uid):
+            seo_btn = InlineKeyboardButton("📝 Получить SEO-текст", callback_data="gen_seo")
+        else:
+            seo_btn = InlineKeyboardButton("📝 SEO-текст — 50 ₽", callback_data="buy_seo")
         feedback_kb = InlineKeyboardMarkup([
+            [seo_btn],
             [InlineKeyboardButton("👍 Отлично!", callback_data="fb_good"),
              InlineKeyboardButton("👎 Нужно лучше", callback_data="fb_bad")],
         ])
@@ -1086,13 +1171,56 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if d == "gen_seo":
+        data = get_user(uid).get("last_product_data")
+        if not data:
+            await q.message.reply_text("❌ Нет данных о товаре. Сначала сгенерируй карточку.")
+            return
+        if not has_seo_access(uid):
+            await q.message.reply_text(
+                "📝 *SEO-текст — 50 ₽*\n\nКупи SEO или Комбо в разделе /buy",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Купить", callback_data="buy")]]),
+            )
+            return
+        await q.answer("⏳ Генерирую SEO...")
+        await q.message.reply_text("⏳ Генерирую SEO-текст...")
+        try:
+            user_caption = get_user(uid).get("last_user_caption", "")
+            seo_text = generate_seo_text(data, user_caption)
+            consume_seo(uid)
+            await q.message.reply_text(
+                f"📝 *SEO-текст готов!*\n\n{seo_text}\n\n{credits_display(uid)}",
+                parse_mode="Markdown",
+            )
+        except Exception as e:
+            logging.exception(e)
+            await q.message.reply_text("😔 Не удалось сгенерировать SEO. Попробуй ещё раз.")
+        return
+
+    if d == "buy_seo":
+        await q.message.reply_text(
+            "📝 *SEO-текст для маркетплейса — 50 ₽*\n\n"
+            "Получи продающее описание, характеристики и ключевые слова для WB/OZON/Яндекс Маркет.\n\n"
+            "🎯 *Комбо* — карточка + SEO всего за *100 ₽*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📝 SEO — 50 ₽", callback_data="plan_seo")],
+                [InlineKeyboardButton("🎯 Комбо — 100 ₽", callback_data="plan_combo")],
+                [InlineKeyboardButton("← Назад", callback_data="buy")],
+            ]),
+        )
+        return
+
     if d == "buy":
         await q.message.edit_text(
             "🛒 *Выбери тариф:*\n\n"
-            "🆓 Бесплатно — 3 карточки\n"
-            "🚀 Старт — 10 карточек | 490 ₽ / 5 USDT\n"
-            "💎 Про — 30 карточек | 990 ₽ / 10 USDT\n"
-            "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽ / 100 USDT",
+            "🎨 1 карточка — 60 ₽\n"
+            "📝 SEO-текст — 50 ₽\n"
+            "🎯 Комбо (карточка + SEO) — 100 ₽\n"
+            "🚀 Старт — 10 карточек | 490 ₽\n"
+            "💎 Про — 30 карточек | 990 ₽\n"
+            "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽",
             parse_mode="Markdown", reply_markup=plans_keyboard(),
         )
         return
