@@ -19,12 +19,12 @@ async def analyze_niche(client: OpenAI, query: str, wb_data: list, ozon_data: li
         for p in ozon_data[:10]:
             data_summary += f"- {p['name']} | {p['price']}₽\n"
 
-    prompt = f"""Ты эксперт по маркетплейсам WB/OZON. Проанализируй нишу по запросу «{query}».
+    prompt = f"""Ты эксперт по маркетплейсам WB/OZON/Amazon. Проанализируй нишу по запросу «{query}».
 
 Данные с маркетплейсов:
 {data_summary}
 
-{"Если данных мало — используй свои экспертные знания о российском рынке маркетплейсов." if len(wb_data) < 5 else ""}
+{"Если данных мало — используй свои экспертные знания о российском рынке (WB, OZON) и мировом (Amazon)." if len(wb_data) < 5 else ""}
 
 Верни СТРОГО JSON:
 {{

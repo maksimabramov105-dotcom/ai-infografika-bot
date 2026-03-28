@@ -439,77 +439,164 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
 
     style = random.randint(0, 3)
 
+    # UNIVERSAL RULES applied in all styles:
+    # - Product ALWAYS centered, occupying exactly 55-65% of the frame
+    # - Rich, saturated, vibrant colors — NOT washed out
+    # - High-end typography variety: mix serif + sans-serif
+    # - Scene: lush, layered, atmospheric
+
     if style == 0:
-        # Arrows pointing to product
-        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+        # STYLE: Arrow callouts — luxury annotated product card
+        prompt = f"""Create a STUNNING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
-DESIGN: PRODUCT is the hero — large, centered, 40-50% of frame. Exact look from the photo.
-Rich decorative scene around product: flowers, leaves, fabrics, ingredients, lifestyle props.
-LIGHTING: warm bokeh, golden glow, depth of field.
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+The product from the photo MUST be placed DEAD CENTER of the image.
+It must occupy 60% of the total frame — large, dominant, impossible to miss.
+Render it photo-realistically, exactly as it looks in the input image.
+Surround it with a LUSH lifestyle scene: fresh flowers, natural textures (marble, wood, silk, linen),
+scattered botanicals or ingredients relevant to the product. Scene fills all corners.
 
-TEXT (ALL IN RUSSIAN):
-- TITLE «{title}» — very large bold serif at TOP, warm cream/gold color
-- SUBTITLE «{subtitle}» — elegant italic below title
-- FEATURES with thin curved ARROW LINES pointing from text to product:
+═══ LIGHTING & COLOR ═══
+• Primary palette: deep jewel tones — emerald, sapphire, burgundy, or deep amber — in the background
+• Product lit with soft frontal key light + warm golden rim light
+• Background: rich bokeh with color depth, NOT flat. Layer multiple light sources.
+• Color grading: rich, saturated, editorial — think Vogue product photography
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — Massive, top-center, bold display font (like Playfair Display or Cormorant Garamond)
+  — Color: bright gold (#FFD700) or luminous ivory with golden outline
+  — Letter-spacing: slightly wide, elegant
+
+SUBTITLE «{subtitle}»:
+  — Italic serif or thin elegant sans, below title
+  — Color: soft champagne or rose gold
+
+FEATURE CALLOUTS with CURVED ARROW LINES pointing to product:
 {feat_text}
-  Arrows: elegant, thin, curved — not straight. Each feature label at a corner: top-left, top-right, bottom-left, bottom-right.
+  — Place labels at 4 corners (top-left, top-right, bottom-left, bottom-right)
+  — Each label: clean white sans-serif text on semi-transparent dark pill shape
+  — Arrows: thin, elegant, slightly curved white/gold lines with small arrowhead tip
+  — Arrows point FROM label TOWARD the relevant part of the product
 
-STYLE: Premium luxury marketplace card with arrow callouts. Warm, atmospheric, depth. NOT flat."""
+═══ OVERALL ═══
+RESULT: Museum-quality product card. Looks like a campaign for a luxury Russian brand.
+Rich colors, cinematic depth, gorgeous typography. NOT flat, NOT dull, NOT generic."""
 
     elif style == 1:
-        # Clean modern — no arrows, floating text blocks
-        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+        # STYLE: Modern editorial — floating badges, no arrows
+        prompt = f"""Create a BREATHTAKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
-DESIGN: PRODUCT occupies center-right or center, 40-50% of frame. Clean, editorial look.
-Background: atmospheric lifestyle scene — minimal decorative elements, clean & sophisticated.
-LIGHTING: soft studio-like, even, clean.
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+Product from the photo: PERFECTLY CENTERED, taking up 60% of the frame.
+Sharp focus on product, background has natural depth-of-field blur.
+Around product: editorial lifestyle staging — textured fabrics, flowers, matching props.
 
-TEXT LAYOUT (ALL IN RUSSIAN):
-- TITLE «{title}» — large bold sans-serif at TOP LEFT, white or cream
-- SUBTITLE «{subtitle}» — lighter weight below title
-- FEATURES as FLOATING TEXT BLOCKS (no arrows) — small pill-shaped or rounded labels placed near the product but NOT connected by lines. Use semi-transparent dark backdrop behind each label.
+═══ LIGHTING & COLOR ═══
+• Background: soft, creamy, desaturated (linen, alabaster, blush) — clean and luxe
+• Product: crisp, bright, perfectly lit — studio beauty lighting
+• Accents: dusty rose, sage green, warm terracotta, or soft cobalt as accent colors
+• Feel: high-fashion magazine editorial, Scandinavian luxury
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — Top area, large bold condensed sans-serif (like Neue Haas Grotesk or Futura Bold)
+  — Color: rich black or deep charcoal with thin colored accent line underneath
+  — Very confident, clean, architectural
+
+SUBTITLE «{subtitle}»:
+  — Light weight, elegant, below title. Color: medium gray or muted accent
+
+FEATURES as FLOATING BADGE LABELS (NO arrows):
 {feat_text}
+  — Each feature: small rounded rectangle pill, positioned AROUND the centered product
+  — Pills: matte dark background (charcoal or deep navy) with bright white text
+  — Small accent dot or icon before each text
+  — Placed asymmetrically for visual rhythm: some higher, some lower
 
-STYLE: Modern, clean, editorial. Like a premium brand lookbook. No arrows, no callout lines. Pure typographic confidence."""
+═══ OVERALL ═══
+Aesthetic: modern Scandinavian luxury, minimal but rich in detail.
+Typography is the hero. Colors are muted but intentional. NOT sterile — textured and warm."""
 
     elif style == 2:
-        # Side panel layout
-        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+        # STYLE: Dark dramatic — cinematic with vibrant accent color
+        prompt = f"""Create a VISUALLY STRIKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
-LAYOUT: Product on the RIGHT side (60% width), TEXT PANEL on the LEFT (40% width).
-Left panel: semi-transparent overlay (dark or light matching scene), vertical list of text.
-Product: large, slightly cropped at edges, atmospheric scene behind it.
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+Product from the photo: DEAD CENTER of the image, occupying 60% of the frame.
+Bold, dramatic, heroic presence. Nothing competes with it visually.
+Scene: moody and cinematic — deep shadows, dramatic props, rich textures behind and around product.
 
-TEXT PANEL (ALL IN RUSSIAN):
-- «{title}» — large bold title at top of panel
-- «{subtitle}» — subtitle below
-- Feature list (no arrows, simple bullets or dashes):
+═══ LIGHTING & COLOR ═══
+• Dominant palette: DARK — deep navy, charcoal, near-black background
+• Vivid accent: choose ONE strong accent color (neon teal, electric coral, gold, or violet)
+• Product lit dramatically from one side + subtle colored rim light matching the accent
+• Background: scattered points of light (bokeh), smoke or mist effect, luxury product vibe
+• Color grading: moody, contrasty, cinematic — like a perfume commercial
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — HUGE, dominant, top center
+  — White or vibrant accent color
+  — Bold display font with strong presence — condensed or wide, not regular weight
+
+SUBTITLE «{subtitle}»:
+  — Elegant thin font below title, in accent color or light silver
+
+FEATURES — annotated with ELEGANT POINTER LINES:
 {feat_text}
+  — Feature text in glowing/bright labels connected to product by thin luminous lines
+  — Labels glow subtly matching the accent color
+  — Spread evenly around the product
 
-STYLE: Magazine split-layout. Premium, confident, structured. Scene bleeds from right side into background."""
+═══ OVERALL ═══
+Final look: A bold, dark, dramatic luxury product card. Like a high-end perfume or tech launch campaign.
+Extremely visual, premium, impossible to scroll past."""
 
     else:
-        # Minimal — big title, features as badges
-        prompt = f"""Create a premium product infographic card for Russian marketplace (Wildberries/OZON). Square 1:1 format, 1080x1080px.
+        # STYLE: Warm organic — lifestyle rich
+        prompt = f"""Create an EXQUISITE warm lifestyle product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-⚠️ MANDATORY SCENE: Place the product in this exact setting: «{scene}». Follow LITERALLY.
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
 
-DESIGN: Product dominates — large, centered, 50-60% of frame. Minimal distractions.
-Background: deep bokeh, rich scene depth, cinematic feel.
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+Product from the photo: CENTERED, occupying 60% of the frame — large, beautiful, in perfect focus.
+The product should look appetizing, inviting, desirable.
+Around it: an abundant, lush organic scene — fresh botanicals, fruit slices, fabric textures,
+natural materials (wood, stone, terra cotta) that perfectly match the product category.
+EVERY CORNER filled with beautiful lifestyle props. Scene is abundant, NOT sparse.
 
-TEXT (ALL IN RUSSIAN):
-- «{title}» — HUGE title text, top area, bold serif, gold or cream
-- «{subtitle}» — small elegant subtitle below title
-- FEATURE BADGES: small rounded rectangular tags scattered around the product (NOT connected by arrows). Each badge has a subtle glow or shadow. Light text on semi-transparent dark background.
+═══ LIGHTING & COLOR ═══
+• Warm golden hour lighting — honey-gold, amber, sunset tones
+• Palette: rich terracotta, deep sage, warm cream, burnt sienna, dusty rose
+• Multiple warm light sources: top-down golden light + soft side fill
+• Deep warm shadows that add dimension, not darkness
+• Result: feels like a beautiful food/beauty/lifestyle Instagram still life
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — Top of image, large elegant serif (like Garamond or Bodoni)
+  — Color: deep warm terracotta or rich burgundy
+  — Slight vintage charm, but modern and premium
+
+SUBTITLE «{subtitle}»:
+  — Script or italic serif, slightly smaller. Color: muted gold or warm taupe
+
+FEATURES:
 {feat_text}
+  — Each feature placed near edges, framed by small decorative botanical element
+  — Text in warm charcoal or deep brown — warm, organic, hand-crafted feel
+  — No arrows — features naturally integrated into the scene layout
 
-STYLE: Cinematic hero shot. Minimal text, maximum product presence. Like a luxury perfume ad."""
+═══ OVERALL ═══
+Final look: An artisan lifestyle editorial. Like a premium organic/beauty brand campaign.
+Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, abundant scene."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -894,19 +981,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🛒 *Купить пакет*\n\n"
-        "⭐ *Telegram Stars* — быстро, без банков:\n"
-        "• 10 инфографик — 250 Stars\n"
-        "• 30 инфографик + аналитика — 500 Stars\n"
-        "• Пакет аналитики ×10 — 400 Stars\n"
-        "• Всё включено на месяц — 750 Stars\n\n"
-        "💳 *Рублями / криптой:*\n"
-        "🎨 1 карточка — 60 ₽  |  📝 SEO — 50 ₽\n"
-        "🚀 Старт 10шт — 490 ₽  |  💎 Про 30шт — 990 ₽",
+        "🛒 *Выбери раздел:*",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⭐ Оплатить Stars", callback_data="buy_stars")],
-            [InlineKeyboardButton("💳 Рубли / Крипто", callback_data="buy")],
+            [InlineKeyboardButton("🎨 Инфографика & SEO", callback_data="buy_section_cards")],
+            [InlineKeyboardButton("📊 Аналитика",         callback_data="buy_section_analytics")],
         ]),
     )
 
@@ -1427,13 +1506,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📊 Аналитика":
         await update.message.reply_text(
             "📊 *Аналитика для маркетплейсов*\n\n"
-            "🔍 /nicha `товар` — анализ ниши (конкуренция, цены, лидеры)\n"
-            "📅 /season `товар` — сезонность (когда входить)\n"
-            "🏭 /supplier `товар` — поставщики на 1688\n"
-            "📦 /full `товар` — полный анализ (всё сразу)\n"
-            "💰 /balance — баланс кредитов\n\n"
-            "Просто отправь команду с названием товара, например:\n"
-            "`/nicha кокосовое масло`",
+            "🔍 /nicha `товар` — анализ ниши (WB, OZON, Amazon — конкуренция, цены, лидеры)\n"
+            "📅 /season `товар` — анализ товаров + сезонность (пик продаж, когда входить)\n"
+            "🏭 /supplier `товар` — поиск поставщиков (1688, Alibaba)\n"
+            "📦 /full `товар` — полный анализ (все три отчёта)\n"
+            "💰 /balance — баланс кредитов аналитики\n\n"
+            "Пример: `/nicha кокосовое масло`",
             parse_mode="Markdown",
         )
     elif text == "🆘 Поддержка":
@@ -1532,10 +1610,70 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if d == "buy_section_cards":
+        await q.message.edit_text(
+            "🎨 *Инфографика & SEO*\n\n"
+            "⭐ *Telegram Stars (быстро, без банков):*\n"
+            "• 10 инфографик — 250 ⭐\n"
+            "• 30 инфографик + аналитика — 500 ⭐\n"
+            "• Всё включено — 750 ⭐\n\n"
+            "💳 *Рубли / Крипто:*\n"
+            "• 1 карточка — 60 ₽\n"
+            "• Комбо (карточка + SEO) — 100 ₽\n"
+            "• Старт 10шт — 490 ₽\n"
+            "• Про 30шт — 990 ₽\n"
+            "• Безлимит/мес — 9 980 ₽\n\n"
+            "_SEO-текст включён в Комбо или списывается с баланса (50 ₽)_",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⭐ Оплатить Stars", callback_data="buy_stars")],
+                [InlineKeyboardButton("🎨 1 карточка — 60 ₽",        callback_data="plan_single")],
+                [InlineKeyboardButton("🎯 Комбо (карт.+SEO) — 100 ₽", callback_data="plan_combo")],
+                [InlineKeyboardButton("🚀 Старт 10шт — 490 ₽",        callback_data="plan_start")],
+                [InlineKeyboardButton("💎 Про 30шт — 990 ₽",           callback_data="plan_pro")],
+                [InlineKeyboardButton("♾️ Безлимит — 9 980 ₽",         callback_data="plan_unlimited")],
+                [InlineKeyboardButton("← Назад", callback_data="buy_main")],
+            ]),
+        )
+        return
+
+    if d == "buy_section_analytics":
+        await q.message.edit_text(
+            "📊 *Аналитика для маркетплейсов*\n\n"
+            "🔍 *Анализ ниши* — конкуренция, цены, лидеры\n"
+            "   149 ₽ / 75 ⭐\n"
+            "📅 *Анализ товаров + сезонность* — когда входить, пик продаж\n"
+            "   149 ₽ / 75 ⭐\n"
+            "🏭 *Поиск поставщиков* — цены на 1688/Alibaba\n"
+            "   199 ₽ / 100 ⭐\n"
+            "📦 *Полный анализ* — всё сразу (3 отчёта)\n"
+            "   399 ₽ / 200 ⭐",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⭐ Пакет аналитики ×10 — 400 ⭐", callback_data="stars_analysis_pack")],
+                [InlineKeyboardButton("🔍 Анализ ниши — 149 ₽",         callback_data="plan_analytics_nicha")],
+                [InlineKeyboardButton("📅 Анализ товаров + сезон — 149 ₽", callback_data="plan_analytics_season")],
+                [InlineKeyboardButton("🏭 Поставщики — 199 ₽",           callback_data="plan_analytics_supplier")],
+                [InlineKeyboardButton("📦 Полный анализ — 399 ₽",        callback_data="plan_analytics_full")],
+                [InlineKeyboardButton("← Назад", callback_data="buy_main")],
+            ]),
+        )
+        return
+
+    if d == "buy_main":
+        await q.message.edit_text(
+            "🛒 *Выбери раздел:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎨 Инфографика & SEO", callback_data="buy_section_cards")],
+                [InlineKeyboardButton("📊 Аналитика",         callback_data="buy_section_analytics")],
+            ]),
+        )
+        return
+
     if d == "buy_stars":
-        await q.message.reply_text(
-            "⭐ *Оплата Telegram Stars*\n\n"
-            "Выбери пакет:",
+        await q.message.edit_text(
+            "⭐ *Telegram Stars — выбери пакет:*",
             parse_mode="Markdown",
             reply_markup=stars_keyboard(),
         )
@@ -1546,37 +1684,32 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name, price, emoji = ANALYTICS_PRICES.get(cmd, ("Анализ", 149, "📊"))
         await q.message.reply_text(
             f"{emoji} *{name}* — {price}₽\n\n"
-            f"Для оплаты перейди в /buy и выбери аналитику.\n\n"
-            f"После оплаты используй:\n"
-            f"`/{cmd} [запрос]`",
+            f"Купи через /buy → Аналитика.\n\n"
+            f"После оплаты: `/{cmd} [запрос]`",
             parse_mode="Markdown",
         )
         return
 
     if d == "buy_seo":
         await q.message.reply_text(
-            "📝 *SEO-текст для маркетплейса — 50 ₽*\n\n"
-            "Получи продающее описание, характеристики и ключевые слова для WB/OZON/Яндекс Маркет.\n\n"
-            "🎯 *Комбо* — карточка + SEO всего за *100 ₽*",
+            "📝 *SEO-текст* списывается с баланса (50 ₽ / 1 кредит).\n\n"
+            "Купи *Комбо* (карточка + SEO) или пополни баланс через /buy.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📝 SEO — 50 ₽", callback_data="plan_seo")],
                 [InlineKeyboardButton("🎯 Комбо — 100 ₽", callback_data="plan_combo")],
-                [InlineKeyboardButton("← Назад", callback_data="buy")],
+                [InlineKeyboardButton("← Назад", callback_data="buy_section_cards")],
             ]),
         )
         return
 
     if d == "buy":
         await q.message.edit_text(
-            "🛒 *Выбери тариф:*\n\n"
-            "🎨 1 карточка — 60 ₽\n"
-            "📝 SEO-текст — 50 ₽\n"
-            "🎯 Комбо (карточка + SEO) — 100 ₽\n"
-            "🚀 Старт — 10 карточек | 490 ₽\n"
-            "💎 Про — 30 карточек | 990 ₽\n"
-            "♾️ Безлимит — ∞ карточек/мес | 9 980 ₽",
-            parse_mode="Markdown", reply_markup=plans_keyboard(),
+            "🛒 *Выбери раздел:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎨 Инфографика & SEO", callback_data="buy_section_cards")],
+                [InlineKeyboardButton("📊 Аналитика",         callback_data="buy_section_analytics")],
+            ]),
         )
         return
 
@@ -2080,7 +2213,7 @@ async def setup_bot(app):
             "📸 Инфографика товара за 30 сек\n"
             "📝 SEO-тексты и ключевые слова\n"
             "📊 Аналитика ниши, сезонности, поставщиков\n\n"
-            "WB, OZON, Яндекс Маркет, AliExpress, Авито"
+            "WB, OZON, Яндекс Маркет, Amazon, Авито"
         )
         await bot.set_my_short_description(
             "🏆 TOP SELLER — ИИ карточки для WB, OZON, Яндекс Маркет. "
