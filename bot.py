@@ -275,35 +275,30 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
 
     feat_text = "\n".join(f"• {f}" for f in features)
 
-    # Пожелания пользователя идут ПЕРВЫМИ как обязательные требования
-    mandatory_user = ""
+    # Если пользователь указал пожелания — они ПОЛНОСТЬЮ ЗАМЕНЯЮТ сцену
     if user_caption:
-        mandatory_user = f"""
-⚠️ ОБЯЗАТЕЛЬНО — ПОЖЕЛАНИЯ КЛИЕНТА (приоритет выше всего остального):
-«{user_caption}»
-Сцена и окружение ДОЛЖНЫ точно соответствовать этим пожеланиям.
-Если клиент написал «светлый интерьер» — фон должен быть светлым/белым/бежевым.
-Если написал «на диване» — товар должен лежать/стоять на диване или рядом с ним.
-Если написал «с цветами» — добавь живые цветы в сцену.
-"""
+        scene = user_caption  # Пожелания клиента = описание сцены
 
     prompt = f"""Создай профессиональную инфографику-карточку товара для маркетплейса (Wildberries/OZON/Яндекс Маркет). Квадратный формат 1:1, 1080x1080.
-{mandatory_user}
-ТРЕБОВАНИЯ К ДИЗАЙНУ (уровень топовых конкурентов):
-1. ТОВАР — главный элемент, крупно, реалистично, в центре или чуть смещён для текста. Занимает 45-55% кадра.
+
+⚠️ ГЛАВНОЕ ТРЕБОВАНИЕ — СЦЕНА И ОКРУЖЕНИЕ:
+Товар должен находиться в следующей обстановке: «{scene}»
+Это описание сцены — ЗАКОН. Если написано «на пианино» — товар СТОИТ на пианино. Если «светлый интерьер» — фон светлый/белый/бежевый, НЕ тёмный. Если «с цветами» — вокруг товара живые цветы. Выполняй БУКВАЛЬНО.
+
+ТРЕБОВАНИЯ К ДИЗАЙНУ:
+1. ТОВАР — главный элемент, крупно, реалистично. Занимает 45-55% кадра.
 2. ТОВАР должен выглядеть ТОЧНО как на приложенном фото — та же форма/упаковка/цвет/этикетка. НЕ искажай.
-3. СЦЕНА вокруг товара: {scene}
-   Добавь декоративные элементы, ассоциирующиеся с товаром: цветы, листья, ткани, ингредиенты — всё что создаёт атмосферу.
-4. ТЕКСТ на карточке (на русском языке):
+3. Вокруг товара — красивые декоративные элементы, подходящие к сцене и товару.
+4. ТЕКСТ на карточке (НА РУССКОМ ЯЗЫКЕ):
    - Заголовок: «{title}» — крупный жирный шрифт, контрастный, сверху карточки
    - Подзаголовок: «{subtitle}» — изящный шрифт, меньше заголовка
    - 4 преимущества разместить ВОКРУГ товара с разных сторон (не только снизу):
 {feat_text}
-5. ТИПОГРАФИКА: используй РАЗНЫЕ размеры и стили — крупный bold заголовок, elegant italic подзаголовок, clean labels для буллетов. Текст должен быть органично вписан в дизайн, как у профи.
-6. ЦВЕТА: элегантная цветовая схема, текст читаем, цвета гармонируют с товаром и сценой.
-7. КАЧЕСТВО: уровень профессионального дизайна для топовых продавцов на маркетплейсах — красиво, нестандартно, уникально.
+5. ТИПОГРАФИКА: разные размеры и стили — крупный bold заголовок, elegant italic подзаголовок, чёткие labels. Текст органично вписан в дизайн.
+6. ЦВЕТА: элегантная палитра, текст читаем, всё гармонирует.
+7. КАЧЕСТВО: уровень профессионального дизайна топовых продавцов — красиво, нестандартно, уникально.
 
-Стиль: премиальная инфографика для маркетплейсов, конкурентный дизайн, не шаблонный."""
+Стиль: премиальная инфографика для маркетплейсов."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -500,6 +495,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton("📸 Сгенерировать карточку"), KeyboardButton("💡 Мои карточки")],
             [KeyboardButton("🛒 Купить"),                 KeyboardButton("🎁 Промокод")],
+            [KeyboardButton("🆘 Поддержка")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Отправь фото товара или выбери действие...",
@@ -721,6 +717,31 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.warning(f"Could not notify user {target_uid}: {e}")
 
 
+async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для владельца: /reply USER_ID ТЕКСТ — ответить пользователю из поддержки."""
+    if update.effective_user.id != OWNER_ID:
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Использование: /reply USER_ID ТЕКСТ_ОТВЕТА")
+        return
+    try:
+        target_uid = int(args[0])
+    except ValueError:
+        await update.message.reply_text("Неверный USER_ID.")
+        return
+    reply_text = " ".join(args[1:])
+    try:
+        await context.bot.send_message(
+            target_uid,
+            f"💬 *Ответ от поддержки:*\n\n{reply_text}",
+            parse_mode="Markdown",
+        )
+        await update.message.reply_text(f"✅ Ответ отправлен пользователю {target_uid}.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Не удалось отправить: {e}")
+
+
 async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Только для владельца: /broadcast ТЕКСТ — рассылка всем пользователям."""
     if update.effective_user.id != OWNER_ID:
@@ -823,9 +844,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + f"\n\n{credits_display(uid)}"
             + "\n\n💡 _Добавь подпись к фото для кастомизации_"
         )
+        feedback_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("👍 Отлично!", callback_data="fb_good"),
+             InlineKeyboardButton("👎 Нужно лучше", callback_data="fb_bad")],
+        ])
         with open(out_path, "rb") as f:
             await update.message.reply_photo(f, caption=caption, parse_mode="Markdown",
-                                              reply_markup=main_menu_keyboard())
+                                              reply_markup=feedback_kb)
         await msg.delete()
 
     except Exception as e:
@@ -844,10 +869,97 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except OSError: pass
 
 
+async def handle_support_question(uid: int, question: str, context: ContextTypes.DEFAULT_TYPE) -> str:
+    """ИИ отвечает на вопрос пользователя о боте. Если не знает — эскалирует к владельцу."""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": """Ты — бот поддержки TOP SELLER (бот для генерации инфографики товаров для маркетплейсов).
+
+Что умеет бот:
+- Генерирует карточки для WB, OZON, Яндекс Маркет и других маркетплейсов
+- Пользователь отправляет фото товара → получает готовую инфографику 1080x1080
+- Можно добавить подпись к фото для кастомизации (например «на пианино, с цветами, светлый фон»)
+- Тарифы: 1 карточка (60₽), Старт 10шт (490₽), Про 30шт (990₽), Безлимит (9980₽/мес)
+- Оплата: перевод на карту РФ, Visa Revolut, USDT, TON
+- Промокоды вводятся командой /promo
+
+Правила ответа:
+- Отвечай коротко, по делу, дружелюбно
+- Если вопрос не связан с ботом или ты не уверен в ответе — ответь: ESCALATE
+- Если вопрос о технической ошибке или жалоба — ответь: ESCALATE"""},
+                {"role": "user", "content": question},
+            ],
+            max_tokens=300,
+        )
+        answer = response.choices[0].message.content.strip()
+        if "ESCALATE" in answer:
+            return None  # Нужна помощь владельца
+        return answer
+    except Exception:
+        return None
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает кнопки постоянного меню."""
+    """Обрабатывает кнопки постоянного меню и режим поддержки."""
     text = update.message.text
     uid  = update.effective_user.id
+
+    # Режим поддержки — если пользователь задал вопрос
+    u = get_user(uid)
+    if u.get("support_mode") and text not in (
+        "📸 Сгенерировать карточку", "💡 Мои карточки", "🛒 Купить", "🎁 Промокод", "🆘 Поддержка"
+    ):
+        u["support_mode"] = False
+        # Если это обратная связь по карточке
+        if u.get("awaiting_feedback"):
+            u["awaiting_feedback"] = False
+            # Отправляем фидбек владельцу
+            user_obj = update.effective_user
+            user_str = f"@{user_obj.username}" if user_obj.username else f"ID {uid}"
+            if OWNER_ID:
+                try:
+                    await context.bot.send_message(
+                        OWNER_ID,
+                        f"📝 *Обратная связь*\n\n"
+                        f"От: {user_str} (ID: `{uid}`)\n"
+                        f"Текст: {text}",
+                        parse_mode="Markdown",
+                    )
+                except Exception:
+                    pass
+            await update.message.reply_text(
+                "🙏 Спасибо за отзыв! Мы учтём его для улучшения бота.",
+                reply_markup=main_menu_keyboard(),
+            )
+            return
+
+        # ИИ-поддержка
+        answer = await handle_support_question(uid, text, context)
+        if answer:
+            await update.message.reply_text(answer, reply_markup=main_menu_keyboard())
+        else:
+            # Эскалация к владельцу
+            user_obj = update.effective_user
+            user_str = f"@{user_obj.username}" if user_obj.username else f"ID {uid}"
+            if OWNER_ID:
+                try:
+                    await context.bot.send_message(
+                        OWNER_ID,
+                        f"🆘 *Вопрос в поддержку*\n\n"
+                        f"От: {user_str} (ID: `{uid}`)\n"
+                        f"Вопрос: {text}\n\n"
+                        f"Ответить: `/reply {uid} ТЕКСТ`",
+                        parse_mode="Markdown",
+                    )
+                except Exception:
+                    pass
+            await update.message.reply_text(
+                "📨 Вопрос передан в поддержку. Мы ответим в ближайшее время!",
+                reply_markup=main_menu_keyboard(),
+            )
+        return
 
     if text == "📸 Сгенерировать карточку":
         await update.message.reply_text(
@@ -872,6 +984,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎁 *Введи промокод командой:*\n\n`/promo ТВОЙКОД`\n\nПример: `/promo ТОП777`",
             parse_mode="Markdown",
         )
+    elif text == "🆘 Поддержка":
+        await update.message.reply_text(
+            "🆘 *Поддержка TOP SELLER*\n\n"
+            "Задай вопрос прямо здесь — отвечу!\n\n"
+            "Частые вопросы:\n"
+            "• Как сгенерировать карточку?\n"
+            "• Как оплатить?\n"
+            "• Как использовать промокод?\n"
+            "• Как улучшить результат?\n\n"
+            "Просто напиши свой вопрос текстом 👇",
+            parse_mode="Markdown",
+        )
+        get_user(uid)["support_mode"] = True
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -879,6 +1004,20 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
     await q.answer()
     d   = q.data
+
+    if d == "fb_good":
+        await q.message.reply_text("🙏 Спасибо! Рады что понравилось. Отправляй ещё фото!",
+                                    reply_markup=main_menu_keyboard())
+        return
+
+    if d == "fb_bad":
+        get_user(uid)["support_mode"] = True
+        get_user(uid)["awaiting_feedback"] = True
+        await q.message.reply_text(
+            "😔 Жаль, что не понравилось. Расскажи, что не так?\n\n"
+            "Напиши что хотелось бы исправить — мы учтём это для улучшения!",
+        )
+        return
 
     if d == "buy":
         await q.message.edit_text(
@@ -1081,6 +1220,7 @@ def main():
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CommandHandler("confirm",   cmd_confirm))
     app.add_handler(CommandHandler("reject",    cmd_reject))
+    app.add_handler(CommandHandler("reply",     cmd_reply))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
