@@ -1506,7 +1506,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📊 Аналитика":
         await update.message.reply_text(
             "📊 *Аналитика для маркетплейсов*\n\n"
-            "🔍 /nicha `товар` — анализ ниши (WB, OZON, Amazon — конкуренция, цены, лидеры)\n"
+            "🔍 /nicha `товар` — анализ ниши (WB, OZON — конкуренция, цены, лидеры)\n"
             "📅 /season `товар` — анализ товаров + сезонность (пик продаж, когда входить)\n"
             "🏭 /supplier `товар` — поиск поставщиков (1688, Alibaba)\n"
             "📦 /full `товар` — полный анализ (все три отчёта)\n"
