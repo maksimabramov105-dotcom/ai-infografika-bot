@@ -5,6 +5,7 @@ import base64
 import logging
 import random
 import urllib.request
+import asyncio
 import httpx
 from datetime import datetime, timedelta, timezone
 
@@ -128,31 +129,32 @@ PLANS = {
     "analytics_nicha": {
         "name": "Анализ ниши", "emoji": "🔍",
         "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
-        "price_rub": 149, "price_usdt": 1.6, "price_ton": 16,
+        "price_rub": 499, "price_usdt": 5.5, "price_ton": 55,
         "description": "1 анализ ниши",
     },
     "analytics_season": {
-        "name": "Анализ сезонности", "emoji": "📅",
+        "name": "Анализ товаров + сезонность", "emoji": "📅",
         "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
-        "price_rub": 149, "price_usdt": 1.6, "price_ton": 16,
-        "description": "1 анализ сезонности",
+        "price_rub": 999, "price_usdt": 11, "price_ton": 110,
+        "description": "Анализ товаров + сезонность",
     },
     "analytics_supplier": {
         "name": "Поставщики", "emoji": "🏭",
         "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
-        "price_rub": 199, "price_usdt": 2.1, "price_ton": 21,
-        "description": "1 анализ поставщиков",
+        "price_rub": 1999, "price_usdt": 22, "price_ton": 220,
+        "description": "Поиск поставщиков (1688, Alibaba)",
     },
     "analytics_full": {
         "name": "Полный анализ", "emoji": "📦",
         "credits": 0, "seo_credits": 0, "analytics_credits": 3, "duration_days": None,
-        "price_rub": 399, "price_usdt": 4.2, "price_ton": 42,
-        "description": "Полный анализ (ниша + сезон + поставщики)",
+        "price_rub": 3777, "price_usdt": 41, "price_ton": 410,
+        "description": "Ниша + сезонность + поставщики (экономия 720₽)",
     },
 }
 
 # ── ХРАНИЛИЩЕ ────────────────────────────────────────────────────────────────────
 user_data: dict[int, dict] = {}
+active_generations: dict[int, asyncio.Task] = {}  # uid -> running generation task
 
 # Счётчик ошибок для авто-оповещения владельца
 _error_counts: dict[str, int] = {}
@@ -496,7 +498,13 @@ FEATURE CALLOUTS with CURVED ARROW LINES pointing to product:
 
 ═══ OVERALL ═══
 RESULT: Museum-quality product card. Looks like a campaign for a luxury Russian brand.
-Rich colors, cinematic depth, gorgeous typography. NOT flat, NOT dull, NOT generic."""
+Rich colors, cinematic depth, gorgeous typography. NOT flat, NOT dull, NOT generic.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     elif style == 1:
         # STYLE: Modern editorial — floating badges, no arrows
@@ -533,7 +541,13 @@ FEATURES as FLOATING BADGE LABELS (NO arrows):
 
 ═══ OVERALL ═══
 Aesthetic: modern Scandinavian luxury, minimal but rich in detail.
-Typography is the hero. Colors are muted but intentional. NOT sterile — textured and warm."""
+Typography is the hero. Colors are muted but intentional. NOT sterile — textured and warm.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     elif style == 2:
         # STYLE: Dark dramatic — cinematic with vibrant accent color
@@ -570,7 +584,13 @@ FEATURES — annotated with ELEGANT POINTER LINES:
 
 ═══ OVERALL ═══
 Final look: A bold, dark, dramatic luxury product card. Like a high-end perfume or tech launch campaign.
-Extremely visual, premium, impossible to scroll past."""
+Extremely visual, premium, impossible to scroll past.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     else:
         # STYLE: Warm organic — lifestyle rich
@@ -609,7 +629,13 @@ FEATURES:
 
 ═══ OVERALL ═══
 Final look: An artisan lifestyle editorial. Like a premium organic/beauty brand campaign.
-Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, abundant scene."""
+Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, abundant scene.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -846,7 +872,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton("📸 Сгенерировать карточку"), KeyboardButton("📝 SEO-текст")],
             [KeyboardButton("🛒 Купить"),                 KeyboardButton("🎁 Промокод")],
             [KeyboardButton("📊 Аналитика"),              KeyboardButton("📌 Памятка")],
-            [KeyboardButton("🆘 Поддержка")],
+            [KeyboardButton("💰 Мой баланс"),             KeyboardButton("🆘 Поддержка")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Отправь фото товара или выбери действие...",
@@ -1075,6 +1101,16 @@ async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.warning(f"Could not notify user {target_uid}: {e}")
 
 
+async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    task = active_generations.pop(uid, None)
+    if task and not task.done():
+        task.cancel()
+        await update.message.reply_text("⛔ Генерация остановлена.")
+    else:
+        await update.message.reply_text("Нет активной генерации.")
+
+
 async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Только для владельца: /pending — список ожидающих подтверждения переводов."""
     if update.effective_user.id != OWNER_ID:
@@ -1247,68 +1283,76 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    msg = await update.message.reply_text("⏳ Анализирую товар...")
+    stop_kb = InlineKeyboardMarkup([[InlineKeyboardButton("⛔ Остановить", callback_data="stop_gen")]])
+    msg = await update.message.reply_text("⏳ Анализирую товар...", reply_markup=stop_kb)
     img_path = f"/tmp/product_{uid}.jpg"
     out_path = None
-    try:
-        photo = update.message.photo[-1]
-        file  = await context.bot.get_file(photo.file_id)
-        await file.download_to_drive(img_path)
 
-        # Пользователь может добавить подпись к фото с пожеланиями
-        user_caption = update.message.caption or ""
+    async def _do_generate():
+        nonlocal out_path
+        try:
+            photo = update.message.photo[-1]
+            file  = await context.bot.get_file(photo.file_id)
+            await file.download_to_drive(img_path)
 
-        await msg.edit_text("🔍 Анализирую товар...")
-        data = analyze_product_image(img_path, user_caption=user_caption)
+            user_caption = update.message.caption or ""
 
-        await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...")
-        out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
+            await msg.edit_text("🔍 Анализирую товар...", reply_markup=stop_kb)
+            data = analyze_product_image(img_path, user_caption=user_caption)
 
-        if not out_path:
-            await msg.edit_text("😔 Не удалось сгенерировать. Попробуй ещё раз.")
-            return
+            await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...", reply_markup=stop_kb)
+            out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
 
-        consume(uid)
-        # Сохраняем данные о товаре для последующей генерации SEO
-        get_user(uid)["last_product_data"] = data
-        get_user(uid)["last_user_caption"] = user_caption
+            if not out_path:
+                await msg.edit_text("😔 Не удалось сгенерировать. Попробуй ещё раз.")
+                return
 
-        caption = (
-            f"✅ *{data.get('title', '')}*\n"
-            f"_{data.get('subtitle', '')}_\n\n"
-            + "\n".join(f"• {f}" for f in data.get("features", []))
-            + f"\n\n{credits_display(uid)}"
-            + "\n\n💡 _Добавь подпись к фото для кастомизации_"
-        )
-        # Кнопки: SEO + обратная связь
-        if has_seo_access(uid):
-            seo_btn = InlineKeyboardButton("📝 Получить SEO-текст", callback_data="gen_seo")
-        else:
-            seo_btn = InlineKeyboardButton("📝 SEO-текст — 50 ₽", callback_data="buy_seo")
-        feedback_kb = InlineKeyboardMarkup([
-            [seo_btn],
-            [InlineKeyboardButton("👍 Отлично!", callback_data="fb_good"),
-             InlineKeyboardButton("👎 Нужно лучше", callback_data="fb_bad")],
-        ])
-        with open(out_path, "rb") as f:
-            await update.message.reply_photo(f, caption=caption, parse_mode="Markdown",
-                                              reply_markup=feedback_kb)
-        await msg.delete()
+            consume(uid)
+            get_user(uid)["last_product_data"] = data
+            get_user(uid)["last_user_caption"] = user_caption
 
-    except Exception as e:
-        logging.exception(e)
-        err_text = user_error_message(e)
-        await msg.edit_text(err_text, parse_mode="Markdown")
-        # Оповещаем владельца при критических ошибках
-        if is_critical_error(e):
-            await notify_owner(context,
-                f"🚨 Критическая ошибка API!\n`{type(e).__name__}: {e}`\n\n"
-                "Проверь баланс OpenAI и Railway Variables.")
-    finally:
-        for p in [img_path, out_path]:
-            if p:
-                try: os.remove(p)
-                except OSError: pass
+            caption = (
+                f"✅ *{data.get('title', '')}*\n"
+                f"_{data.get('subtitle', '')}_\n\n"
+                + "\n".join(f"• {f}" for f in data.get("features", []))
+                + f"\n\n{credits_display(uid)}"
+                + "\n\n💡 _Добавь подпись к фото для кастомизации_"
+            )
+            if has_seo_access(uid):
+                seo_btn = InlineKeyboardButton("📝 Получить SEO-текст", callback_data="gen_seo")
+            else:
+                seo_btn = InlineKeyboardButton("📝 SEO-текст — 50 ₽", callback_data="buy_seo")
+            feedback_kb = InlineKeyboardMarkup([
+                [seo_btn],
+                [InlineKeyboardButton("👍 Отлично!", callback_data="fb_good"),
+                 InlineKeyboardButton("👎 Нужно лучше", callback_data="fb_bad")],
+            ])
+            with open(out_path, "rb") as f:
+                await update.message.reply_photo(f, caption=caption, parse_mode="Markdown",
+                                                  reply_markup=feedback_kb)
+            await msg.delete()
+
+        except asyncio.CancelledError:
+            await msg.edit_text("⛔ Генерация остановлена.")
+            raise
+        except Exception as e:
+            logging.exception(e)
+            err_text = user_error_message(e)
+            await msg.edit_text(err_text, parse_mode="Markdown")
+            if is_critical_error(e):
+                await notify_owner(context,
+                    f"🚨 Критическая ошибка API!\n`{type(e).__name__}: {e}`\n\n"
+                    "Проверь баланс OpenAI и Railway Variables.")
+        finally:
+            active_generations.pop(uid, None)
+            for p in [img_path, out_path]:
+                if p:
+                    try: os.remove(p)
+                    except OSError: pass
+
+    task = asyncio.create_task(_do_generate())
+    active_generations[uid] = task
+    await task
 
 
 async def handle_support_question(uid: int, question: str, context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -1357,7 +1401,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Если это обратная связь по карточке
         if u.get("awaiting_feedback"):
             u["awaiting_feedback"] = False
-            # Отправляем фидбек владельцу
             user_obj = update.effective_user
             if OWNER_ID:
                 try:
@@ -1368,8 +1411,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"Текст: {esc(text)}",
                         parse_mode="Markdown",
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.error(f"Failed to send feedback to owner: {e}")
             await update.message.reply_text(
                 "🙏 Спасибо за отзыв! Мы учтём его для улучшения бота.",
                 reply_markup=main_menu_keyboard(),
@@ -1393,8 +1436,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"Ответить: `/reply {uid} ТЕКСТ`",
                         parse_mode="Markdown",
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.error(f"Failed to forward support msg to owner: {e}")
             await update.message.reply_text(
                 "📨 Вопрос передан в поддержку. Мы ответим в ближайшее время!",
                 reply_markup=main_menu_keyboard(),
@@ -1499,6 +1542,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Пример: `/nicha кокосовое масло`",
             parse_mode="Markdown",
         )
+    elif text == "💰 Мой баланс":
+        bal = await userdb.get_analytics_balance(uid)
+        u = get_user(uid)
+        await update.message.reply_text(
+            f"💰 *Твой баланс*\n\n"
+            f"🎨 Карточки: *{credits_display(uid)}*\n"
+            f"📊 Аналитика: *{bal} кредит(а)*\n\n"
+            f"Пополнить: /buy",
+            parse_mode="Markdown",
+        )
     elif text == "🆘 Поддержка":
         await update.message.reply_text(
             "🆘 *Поддержка TOP SELLER*\n\n"
@@ -1519,6 +1572,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
     await q.answer()
     d   = q.data
+
+    if d == "stop_gen":
+        task = active_generations.pop(uid, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await q.message.edit_text("⛔ Генерация остановлена.")
+            except Exception:
+                pass
+        else:
+            await q.answer("Нет активной генерации.", show_alert=True)
+        return
 
     if d == "fb_good":
         await q.message.reply_text("🙏 Спасибо! Рады что понравилось. Отправляй ещё фото!",
@@ -1621,7 +1686,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mkt_label = {"wb": "Wildberries", "ozon": "OZON", "amazon": "Amazon", "all": "все площадки"}
             msg = await _reply(f"📅 Анализирую «{query}» ({mkt_label.get(marketplace, marketplace)})…")
             try:
-                await userdb.use_analytics_credit(uid, 1)
+                await _use_analytics_credit(uid, 1)
                 raw = await analyze_season(client, query, marketplace)
                 text = format_season(query, raw)
                 await userdb.log_analysis(uid, query, f"season_{marketplace}", raw)
@@ -1670,20 +1735,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.edit_text(
             "📊 *Аналитика для маркетплейсов*\n\n"
             "🔍 *Анализ ниши* — конкуренция, цены, лидеры\n"
-            "   149 ₽ / 75 ⭐\n"
+            "   499 ₽\n"
             "📅 *Анализ товаров + сезонность* — когда входить, пик продаж\n"
-            "   149 ₽ / 75 ⭐\n"
+            "   999 ₽\n"
             "🏭 *Поиск поставщиков* — цены на 1688/Alibaba\n"
-            "   199 ₽ / 100 ⭐\n"
-            "📦 *Полный анализ* — всё сразу (3 отчёта)\n"
-            "   399 ₽ / 200 ⭐",
+            "   1 999 ₽\n"
+            "📦 *Полный анализ* — ниша + сезон + поставщики (экономия 720₽)\n"
+            "   3 777 ₽",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⭐ Пакет аналитики ×10 — 400 ⭐", callback_data="stars_analysis_pack")],
-                [InlineKeyboardButton("🔍 Анализ ниши — 149 ₽",         callback_data="plan_analytics_nicha")],
-                [InlineKeyboardButton("📅 Анализ товаров + сезон — 149 ₽", callback_data="plan_analytics_season")],
-                [InlineKeyboardButton("🏭 Поставщики — 199 ₽",           callback_data="plan_analytics_supplier")],
-                [InlineKeyboardButton("📦 Полный анализ — 399 ₽",        callback_data="plan_analytics_full")],
+                [InlineKeyboardButton("🔍 Анализ ниши — 499 ₽",              callback_data="plan_analytics_nicha")],
+                [InlineKeyboardButton("📅 Анализ товаров + сезон — 999 ₽",   callback_data="plan_analytics_season")],
+                [InlineKeyboardButton("🏭 Поставщики — 1 999 ₽",             callback_data="plan_analytics_supplier")],
+                [InlineKeyboardButton("📦 Полный анализ — 3 777 ₽",          callback_data="plan_analytics_full")],
                 [InlineKeyboardButton("← Назад", callback_data="buy_main")],
             ]),
         )
@@ -1765,7 +1829,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await userdb.save_pending_transfer(uid, pid, "ru_card")
         await q.message.edit_text(
             f"🏦 *Перевод на карту (РФ)*\n\n"
-            f"Номер карты: `{CARD_RU}`\n"
+            f"Номер карты — нажми чтобы скопировать:\n"
+            f"`{CARD_RU}`\n\n"
             f"Сумма: *{p['price_rub']} ₽*\n"
             f"Получатель: Максим А.\n\n"
             f"После перевода *отправь скриншот* чека прямо в этот чат — "
@@ -1782,7 +1847,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await userdb.save_pending_transfer(uid, pid, "revolut")
         await q.message.edit_text(
             f"🌐 *Оплата Visa Revolut (зарубежный банк)*\n\n"
-            f"Номер карты: `{CARD_REVOLUT}`\n"
+            f"Номер карты — нажми чтобы скопировать:\n"
+            f"`{CARD_REVOLUT}`\n\n"
             f"Сумма: *{p['price_usdt']}$*\n"
             f"Получатель: Maksim A.\n\n"
             f"После перевода *отправь скриншот* чека прямо в этот чат — "
@@ -2077,8 +2143,16 @@ def _analytics_buy_keyboard(cmd: str) -> InlineKeyboardMarkup:
 
 
 async def _check_analytics_credit(uid: int, cost: int) -> bool:
+    if uid == OWNER_ID:
+        return True
     bal = await userdb.get_analytics_balance(uid)
     return bal >= cost
+
+
+async def _use_analytics_credit(uid: int, cost: int):
+    if uid == OWNER_ID:
+        return
+    await userdb.use_analytics_credit(uid, cost)
 
 
 def _marketplace_keyboard(cmd: str, query: str) -> InlineKeyboardMarkup:
@@ -2156,7 +2230,7 @@ async def cmd_supplier(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Suppliers always from Chinese platforms — no marketplace choice
     msg = await update.message.reply_text("🏭 Ищу поставщиков «{}» на 1688/Alibaba…".format(product))
     try:
-        await userdb.use_analytics_credit(uid, 1)
+        await _use_analytics_credit(uid, 1)
         supplier_data = await parsers.search_1688(product, product)
         result = await analyze_suppliers(client, product, supplier_data)
         raw = result[0] if isinstance(result, tuple) else result
@@ -2196,7 +2270,7 @@ async def _run_nicha(uid: int, query: str, marketplace: str, reply_fn):
     mkt_label = {"wb": "Wildberries", "ozon": "OZON", "amazon": "Amazon", "all": "WB + OZON + Amazon"}
     msg = await reply_fn(f"🔍 Анализирую нишу «{query}» на {mkt_label.get(marketplace, marketplace)}…")
     try:
-        await userdb.use_analytics_credit(uid, 1)
+        await _use_analytics_credit(uid, 1)
         wb_data = await parsers.search_wb(query) if marketplace in ("wb", "all") else []
         ozon_data = await parsers.search_ozon(query) if marketplace in ("ozon", "all") else []
         raw = await analyze_niche(client, query, wb_data, ozon_data, marketplace)
@@ -2215,7 +2289,7 @@ async def _run_full(uid: int, query: str, marketplace: str, update: Update):
         f"📦 Запускаю полный анализ «{query}» на {mkt_label.get(marketplace, marketplace)}… (~40 сек)"
     )
     try:
-        await userdb.use_analytics_credit(uid, 3)
+        await _use_analytics_credit(uid, 3)
         wb_data = await parsers.search_wb(query) if marketplace in ("wb", "all") else []
         ozon_data = await parsers.search_ozon(query) if marketplace in ("ozon", "all") else []
         supplier_data = await parsers.search_1688(query, query)
@@ -2293,6 +2367,7 @@ def main():
     app.add_handler(CommandHandler("promo",     cmd_promo))
     app.add_handler(CommandHandler("addpromo",  cmd_admin_promo))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
+    app.add_handler(CommandHandler("stop",      cmd_stop))
     app.add_handler(CommandHandler("confirm",   cmd_confirm))
     app.add_handler(CommandHandler("reject",    cmd_reject))
     app.add_handler(CommandHandler("pending",   cmd_pending))
