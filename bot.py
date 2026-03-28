@@ -20,6 +20,12 @@ from telegram.ext import (
 )
 from telegram.error import Conflict
 from openai import OpenAI, RateLimitError, AuthenticationError, APIConnectionError
+import db as userdb
+import parsers
+from analytics import (
+    analyze_niche, analyze_season, analyze_suppliers,
+    format_niche, format_season, format_suppliers,
+)
 
 # ── CONFIG ───────────────────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8728265878:AAH7pdsOpSO1x4eDrnY9pKaFA5IYS7DlU6E")
@@ -84,6 +90,30 @@ PLANS = {
         "credits": -1, "seo_credits": 0, "duration_days": 30,
         "price_rub": 9980, "price_usdt": 100.0, "price_ton": 1000,
         "description": "Безлимит на 30 дней",
+    },
+    "analytics_nicha": {
+        "name": "Анализ ниши", "emoji": "🔍",
+        "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
+        "price_rub": 149, "price_usdt": 1.6, "price_ton": 16,
+        "description": "1 анализ ниши",
+    },
+    "analytics_season": {
+        "name": "Анализ сезонности", "emoji": "📅",
+        "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
+        "price_rub": 149, "price_usdt": 1.6, "price_ton": 16,
+        "description": "1 анализ сезонности",
+    },
+    "analytics_supplier": {
+        "name": "Поставщики", "emoji": "🏭",
+        "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
+        "price_rub": 199, "price_usdt": 2.1, "price_ton": 21,
+        "description": "1 анализ поставщиков",
+    },
+    "analytics_full": {
+        "name": "Полный анализ", "emoji": "📦",
+        "credits": 0, "seo_credits": 0, "analytics_credits": 3, "duration_days": None,
+        "price_rub": 399, "price_usdt": 4.2, "price_ton": 42,
+        "description": "Полный анализ (ниша + сезон + поставщики)",
     },
 }
 
@@ -635,6 +665,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton("📸 Сгенерировать карточку"), KeyboardButton("💡 Мои карточки")],
             [KeyboardButton("🛒 Купить"),                 KeyboardButton("🎁 Промокод")],
+            [KeyboardButton("📊 Аналитика"),              KeyboardButton("📌 Памятка")],
             [KeyboardButton("🆘 Поддержка")],
         ],
         resize_keyboard=True,
@@ -1209,6 +1240,48 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎁 *Введи промокод командой:*\n\n`/promo ТВОЙКОД`\n\nПример: `/promo ТОП777`",
             parse_mode="Markdown",
         )
+    elif text == "📌 Памятка":
+        await update.message.reply_text(
+            "📌 *Памятка: как получить идеальную карточку*\n\n"
+            "📸 *Какое фото прислать:*\n"
+            "• Чистый фон (белый или однотонный) — лучше всего\n"
+            "• Хорошее освещение, без теней\n"
+            "• Товар крупно, по центру, без обрезки\n"
+            "• Высокое разрешение (от 1000×1000 пикс.)\n"
+            "• Без водяных знаков и текста\n"
+            "• Один товар на фото (не набор)\n\n"
+            "❌ *Не подходят:* скриншоты с WB, размытые фото, "
+            "фото на пёстром фоне, коллажи\n\n"
+            "✍️ *Как написать подпись (промпт):*\n"
+            "Добавь подпись к фото перед отправкой — бот создаст "
+            "именно ту сцену, которую ты описал.\n\n"
+            "✅ *Хорошие примеры:*\n"
+            "• _«свеча на пианино, с цветами, тёплый свет»_\n"
+            "• _«крем для лица, светлый интерьер, минималистичный стиль»_\n"
+            "• _«кроссовки, спортивный стиль, динамичный фон, неон»_\n"
+            "• _«подушка, уютная гостиная, на диване, пастельные тона»_\n\n"
+            "❌ *Плохие примеры:*\n"
+            "• _«сделай красиво»_ — слишком абстрактно\n"
+            "• _«товар»_ — ничего не описывает\n\n"
+            "💡 *Формула промпта:*\n"
+            "`[товар], [где/сцена], [стиль/атмосфера], [детали]`\n\n"
+            "📝 *SEO-текст:*\n"
+            "После генерации карточки нажми «📝 SEO-текст» — "
+            "получишь готовые название, описание и ключевые слова для маркетплейса.",
+            parse_mode="Markdown",
+        )
+    elif text == "📊 Аналитика":
+        await update.message.reply_text(
+            "📊 *Аналитика для маркетплейсов*\n\n"
+            "🔍 /nicha `товар` — анализ ниши (конкуренция, цены, лидеры)\n"
+            "📅 /season `товар` — сезонность (когда входить)\n"
+            "🏭 /supplier `товар` — поставщики на 1688\n"
+            "📦 /full `товар` — полный анализ (всё сразу)\n"
+            "💰 /balance — баланс кредитов\n\n"
+            "Просто отправь команду с названием товара, например:\n"
+            "`/nicha кокосовое масло`",
+            parse_mode="Markdown",
+        )
     elif text == "🆘 Поддержка":
         await update.message.reply_text(
             "🆘 *Поддержка TOP SELLER*\n\n"
@@ -1269,6 +1342,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.exception(e)
             await q.message.reply_text("😔 Не удалось сгенерировать SEO. Попробуй ещё раз.")
+        return
+
+    if d.startswith("buy_analytics_"):
+        cmd = d.replace("buy_analytics_", "")
+        name, price, emoji = ANALYTICS_PRICES.get(cmd, ("Анализ", 149, "📊"))
+        await q.message.reply_text(
+            f"{emoji} *{name}* — {price}₽\n\n"
+            f"Для оплаты перейди в /buy и выбери аналитику.\n\n"
+            f"После оплаты используй:\n"
+            f"`/{cmd} [запрос]`",
+            parse_mode="Markdown",
+        )
         return
 
     if d == "buy_seo":
@@ -1484,16 +1569,197 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 
+# ── АНАЛИТИКА ─────────────────────────────────────────────────────────────────────
+ANALYTICS_PRICES = {
+    "nicha": ("Анализ ниши", 149, "🔍"),
+    "season": ("Анализ сезонности", 149, "📅"),
+    "supplier": ("Поставщики", 199, "🏭"),
+    "full": ("Полный анализ", 399, "📦"),
+}
+
+
+def _analytics_buy_keyboard(cmd: str) -> InlineKeyboardMarkup:
+    name, price, emoji = ANALYTICS_PRICES[cmd]
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(f"💳 Купить за {price}₽", callback_data=f"buy_analytics_{cmd}"),
+    ]])
+
+
+async def _check_analytics_credit(uid: int, cost: int) -> bool:
+    bal = await userdb.get_analytics_balance(uid)
+    return bal >= cost
+
+
+async def cmd_nicha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    query = " ".join(context.args).strip() if context.args else ""
+    if not query:
+        await update.message.reply_text(
+            "🔍 *Анализ ниши*\n\nИспользование: `/nicha кокосовое масло`\n\n"
+            "Показывает: конкуренцию, цены, лидеров, рекомендацию входить или нет.",
+            parse_mode="Markdown",
+        )
+        return
+
+    if not await _check_analytics_credit(uid, 1):
+        await update.message.reply_text(
+            f"🔍 *Анализ ниши* — 149₽\n\n"
+            f"У тебя нет кредитов аналитики. Купи анализ:",
+            parse_mode="Markdown",
+            reply_markup=_analytics_buy_keyboard("nicha"),
+        )
+        return
+
+    msg = await update.message.reply_text("🔍 Анализирую нишу «{}»…".format(query))
+    try:
+        await userdb.use_analytics_credit(uid, 1)
+        wb_data = await parsers.search_wb(query)
+        ozon_data = await parsers.search_ozon(query)
+        raw = await analyze_niche(client, query, wb_data, ozon_data)
+        text = format_niche(query, raw)
+        await userdb.log_analysis(uid, query, "nicha", raw)
+        await msg.edit_text(text, parse_mode="Markdown")
+    except Exception as e:
+        logging.exception(e)
+        await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+
+
+async def cmd_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    product = " ".join(context.args).strip() if context.args else ""
+    if not product:
+        await update.message.reply_text(
+            "📅 *Анализ сезонности*\n\nИспользование: `/season пуховик`\n\n"
+            "Показывает: пики продаж, лучшее время входа, текущий статус.",
+            parse_mode="Markdown",
+        )
+        return
+
+    if not await _check_analytics_credit(uid, 1):
+        await update.message.reply_text(
+            f"📅 *Анализ сезонности* — 149₽\n\nКупи кредиты аналитики:",
+            parse_mode="Markdown",
+            reply_markup=_analytics_buy_keyboard("season"),
+        )
+        return
+
+    msg = await update.message.reply_text("📅 Анализирую сезонность «{}»…".format(product))
+    try:
+        await userdb.use_analytics_credit(uid, 1)
+        raw = await analyze_season(client, product)
+        text = format_season(product, raw)
+        await userdb.log_analysis(uid, product, "season", raw)
+        await msg.edit_text(text, parse_mode="Markdown")
+    except Exception as e:
+        logging.exception(e)
+        await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+
+
+async def cmd_supplier(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    product = " ".join(context.args).strip() if context.args else ""
+    if not product:
+        await update.message.reply_text(
+            "🏭 *Поставщики*\n\nИспользование: `/supplier кокосовое масло`\n\n"
+            "Показывает: поставщиков на 1688/Alibaba, цены, маржу на WB.",
+            parse_mode="Markdown",
+        )
+        return
+
+    if not await _check_analytics_credit(uid, 1):
+        await update.message.reply_text(
+            f"🏭 *Анализ поставщиков* — 199₽\n\nКупи кредиты аналитики:",
+            parse_mode="Markdown",
+            reply_markup=_analytics_buy_keyboard("supplier"),
+        )
+        return
+
+    msg = await update.message.reply_text("🏭 Ищу поставщиков «{}»…".format(product))
+    try:
+        await userdb.use_analytics_credit(uid, 1)
+        supplier_data = await parsers.search_1688(product, product)
+        result = await analyze_suppliers(client, product, supplier_data)
+        raw = result[0] if isinstance(result, tuple) else result
+        text = format_suppliers(product, raw)
+        await userdb.log_analysis(uid, product, "supplier", raw)
+        await msg.edit_text(text, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception as e:
+        logging.exception(e)
+        await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+
+
+async def cmd_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    query = " ".join(context.args).strip() if context.args else ""
+    if not query:
+        await update.message.reply_text(
+            "📦 *Полный анализ*\n\nИспользование: `/full кокосовое масло`\n\n"
+            "Включает: анализ ниши + сезонность + поставщики (3 кредита).",
+            parse_mode="Markdown",
+        )
+        return
+
+    if not await _check_analytics_credit(uid, 3):
+        bal = await userdb.get_analytics_balance(uid)
+        await update.message.reply_text(
+            f"📦 *Полный анализ* — 399₽\n\n"
+            f"Нужно 3 кредита, у тебя: {bal}. Купи полный анализ:",
+            parse_mode="Markdown",
+            reply_markup=_analytics_buy_keyboard("full"),
+        )
+        return
+
+    msg = await update.message.reply_text("📦 Запускаю полный анализ «{}»… (~30 сек)".format(query))
+    try:
+        await userdb.use_analytics_credit(uid, 3)
+
+        # Run all three analyses
+        wb_data = await parsers.search_wb(query)
+        ozon_data = await parsers.search_ozon(query)
+        supplier_data = await parsers.search_1688(query, query)
+
+        raw_niche = await analyze_niche(client, query, wb_data, ozon_data)
+        raw_season = await analyze_season(client, query)
+        supplier_result = await analyze_suppliers(client, query, supplier_data)
+        raw_supplier = supplier_result[0] if isinstance(supplier_result, tuple) else supplier_result
+
+        text_niche = format_niche(query, raw_niche)
+        text_season = format_season(query, raw_season)
+        text_supplier = format_suppliers(query, raw_supplier)
+
+        await userdb.log_analysis(uid, query, "full", raw_niche)
+
+        await msg.edit_text(text_niche, parse_mode="Markdown")
+        await update.message.reply_text(text_season, parse_mode="Markdown")
+        await update.message.reply_text(text_supplier, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception as e:
+        logging.exception(e)
+        await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+
+
+async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    bal = await userdb.get_analytics_balance(uid)
+    u = get_user(uid)
+    await update.message.reply_text(
+        f"💰 *Твой баланс:*\n\n"
+        f"🎨 Карточки: *{credits_display(uid)}*\n"
+        f"📊 Аналитика: *{bal} кредит(а)*\n\n"
+        f"Купи /buy",
+        parse_mode="Markdown",
+    )
+
+
 # ── НАСТРОЙКА БОТА В TELEGRAM ─────────────────────────────────────────────────────
 async def setup_bot(app):
     """Устанавливает описание, about и команды бота при запуске."""
     bot = app.bot
     try:
         await bot.set_my_description(
-            "🏆 TOP SELLER — ИИ-генератор карточек для маркетплейсов\n\n"
-            "📸 Отправь фото товара\n"
-            "🤖 ИИ создаёт сцену и дизайн\n"
-            "✨ Получи карточку 1080×1080 за 30 сек\n\n"
+            "🏆 TOP SELLER — ИИ для маркетплейсов\n\n"
+            "📸 Инфографика товара за 30 сек\n"
+            "📝 SEO-тексты и ключевые слова\n"
+            "📊 Аналитика ниши, сезонности, поставщиков\n\n"
             "WB, OZON, Яндекс Маркет, AliExpress, Авито"
         )
         await bot.set_my_short_description(
@@ -1501,10 +1767,15 @@ async def setup_bot(app):
             "Отправь фото — получи продающую инфографику за 30 сек!"
         )
         await bot.set_my_commands([
-            ("start",   "Запустить бота"),
-            ("buy",     "Купить карточки"),
-            ("credits", "Мой баланс"),
-            ("promo",   "Ввести промокод"),
+            ("start",    "Запустить бота"),
+            ("buy",      "Купить карточки"),
+            ("credits",  "Мой баланс"),
+            ("promo",    "Ввести промокод"),
+            ("nicha",    "Анализ ниши"),
+            ("season",   "Анализ сезонности"),
+            ("supplier", "Поставщики на 1688"),
+            ("full",     "Полный анализ"),
+            ("balance",  "Баланс кредитов"),
         ])
         logging.info("Bot description and commands set.")
     except Exception as e:
@@ -1513,6 +1784,8 @@ async def setup_bot(app):
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────────
 def main():
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(userdb.init_db())
     download_fonts()
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(setup_bot).build()
     app.add_handler(CommandHandler("start",     cmd_start))
@@ -1524,6 +1797,11 @@ def main():
     app.add_handler(CommandHandler("confirm",   cmd_confirm))
     app.add_handler(CommandHandler("reject",    cmd_reject))
     app.add_handler(CommandHandler("reply",     cmd_reply))
+    app.add_handler(CommandHandler("nicha",     cmd_nicha))
+    app.add_handler(CommandHandler("season",    cmd_season))
+    app.add_handler(CommandHandler("supplier",  cmd_supplier))
+    app.add_handler(CommandHandler("full",      cmd_full))
+    app.add_handler(CommandHandler("balance",   cmd_balance))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
