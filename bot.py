@@ -275,6 +275,19 @@ def apply_promo(uid: int, code: str) -> tuple[bool, str]:
     )
 
 
+# ── УТИЛИТЫ ───────────────────────────────────────────────────────────────────────
+def esc(text: str) -> str:
+    """Escape user-provided strings for Telegram Markdown v1."""
+    return str(text).replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[")
+
+
+def user_tag(user) -> str:
+    """Safe user mention — escapes username underscores."""
+    if user and user.username:
+        return f"@{esc(user.username)}"
+    return f"ID {user.id if user else '?'}"
+
+
 # ── УВЕДОМЛЕНИЕ ВЛАДЕЛЬЦА ─────────────────────────────────────────────────────────
 async def notify_owner(context: ContextTypes.DEFAULT_TYPE, text: str):
     if OWNER_ID:
@@ -1204,11 +1217,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if OWNER_ID and OWNER_ID != uid:
                 try:
                     user_obj = update.effective_user
-                    user_str = f"@{user_obj.username}" if user_obj.username else f"ID {uid}"
                     await context.bot.send_photo(
                         OWNER_ID, photo.file_id,
-                        caption=f"✅ *Авто-подтверждено*\n{user_str} | {p['emoji']} {p['name']} | {expected_amount}{currency}",
-                        parse_mode="Markdown",
+                        caption=f"✅ Авто-подтверждено\n{user_tag(user_obj)} | {p['emoji']} {p['name']} | {expected_amount}{currency}",
                     )
                 except Exception: pass
         else:
@@ -1216,17 +1227,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if OWNER_ID:
                 try:
                     user_obj = update.effective_user
-                    user_str = f"@{user_obj.username}" if user_obj.username else f"ID {uid}"
                     method_label = "РФ карта" if method == "ru_card" else "Revolut"
                     await context.bot.send_photo(
                         OWNER_ID, photo.file_id,
                         caption=(
-                            f"⚠️ *Требует проверки*\n\n"
-                            f"Пользователь: {user_str}\n"
+                            f"⚠️ Требует проверки\n\n"
+                            f"Пользователь: {user_tag(user_obj)}\n"
                             f"Способ: {method_label}\n"
                             f"Тариф: {p['emoji']} {p['name']} ({expected_amount}{currency})"
                         ),
-                        parse_mode="Markdown",
                         reply_markup=InlineKeyboardMarkup([
                             [InlineKeyboardButton("✅ Подтвердить", callback_data=f"owner_confirm_{uid}_{pid}"),
                              InlineKeyboardButton("❌ Отклонить",   callback_data=f"owner_reject_{uid}")],
@@ -1372,14 +1381,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             u["awaiting_feedback"] = False
             # Отправляем фидбек владельцу
             user_obj = update.effective_user
-            user_str = f"@{user_obj.username}" if user_obj.username else f"ID {uid}"
             if OWNER_ID:
                 try:
                     await context.bot.send_message(
                         OWNER_ID,
                         f"📝 *Обратная связь*\n\n"
-                        f"От: {user_str} (ID: `{uid}`)\n"
-                        f"Текст: {text}",
+                        f"От: {user_tag(user_obj)} (ID: `{uid}`)\n"
+                        f"Текст: {esc(text)}",
                         parse_mode="Markdown",
                     )
                 except Exception:
@@ -1397,14 +1405,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # Эскалация к владельцу
             user_obj = update.effective_user
-            user_str = f"@{user_obj.username}" if user_obj.username else f"ID {uid}"
             if OWNER_ID:
                 try:
                     await context.bot.send_message(
                         OWNER_ID,
                         f"🆘 *Вопрос в поддержку*\n\n"
-                        f"От: {user_str} (ID: `{uid}`)\n"
-                        f"Вопрос: {text}\n\n"
+                        f"От: {user_tag(user_obj)} (ID: `{uid}`)\n"
+                        f"Вопрос: {esc(text)}\n\n"
                         f"Ответить: `/reply {uid} ТЕКСТ`",
                         parse_mode="Markdown",
                     )
@@ -2032,16 +2039,18 @@ async def cmd_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     await userdb.request_withdrawal(uid, withdrawable)
-    username = update.effective_user.username or str(uid)
     if OWNER_ID:
-        await context.bot.send_message(
-            OWNER_ID,
-            f"💸 *Заявка на вывод Stars*\n\n"
-            f"User: @{username} (ID: {uid})\n"
-            f"Сумма: *{withdrawable} ⭐*\n\n"
-            f"Выплати через Fragment или Telegram.",
-            parse_mode="Markdown",
-        )
+        try:
+            await context.bot.send_message(
+                OWNER_ID,
+                f"💸 *Заявка на вывод Stars*\n\n"
+                f"User: {user_tag(update.effective_user)} (ID: {uid})\n"
+                f"Сумма: *{withdrawable} ⭐*\n\n"
+                f"Выплати через Fragment или Telegram.",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
     await update.message.reply_text(
         f"✅ Заявка на вывод *{withdrawable} ⭐* принята.\n\n"
         f"Обработка в течение 24 часов.",
