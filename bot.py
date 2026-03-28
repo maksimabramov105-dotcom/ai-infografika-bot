@@ -1240,24 +1240,27 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         method_label = "РФ карта" if method == "ru_card" else "Visa Revolut"
         photo        = update.message.photo[-1]
 
-        # 1. Сразу успокаиваем пользователя
+        # 1. Авто-подтверждаем и сразу пополняем баланс
+        apply_plan(uid, pid)
+
         await update.message.reply_text(
-            "📨 Скриншот получен!\n\n"
-            "Проверяем оплату вручную — обычно это занимает несколько минут.\n"
-            "Как только подтвердим, баланс пополнится автоматически 🙏",
+            f"✅ Оплата подтверждена автоматически!\n\n"
+            f"{p['emoji']} *{p['name']}* активирован.\n\n"
+            f"{credits_display(uid)}\n\n"
+            f"Отправляй фото товаров — создадим карточки! 🎨",
+            parse_mode="Markdown",
         )
 
-        # 2. Шлём владельцу фото с кнопками ✅/❌
+        # 2. Уведомляем владельца с возможностью отозвать
         if not OWNER_ID:
-            logging.error("OWNER_ID not set — transfer screenshot not forwarded!")
             return
 
         caption = (
-            f"💳 Новый перевод\n\n"
+            f"🔔 Авто-подтверждено\n\n"
             f"👤 {full_name} (@{user_obj.username or 'без username'}, ID: {uid})\n"
             f"💰 {expected_amount} {currency} — {method_label}\n"
             f"📦 Тариф: {p['name']}\n\n"
-            f"Нажми ✅ чтобы подтвердить оплату и пополнить баланс."
+            f"Баланс уже пополнен. Нажми ↩️ если скриншот поддельный — баланс спишется обратно."
         )
         try:
             await context.bot.send_photo(
@@ -1265,12 +1268,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 photo.file_id,
                 caption=caption,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("✅ Подтвердить", callback_data=f"owner_confirm_{uid}_{pid}"),
-                    InlineKeyboardButton("❌ Отклонить",   callback_data=f"owner_reject_{uid}"),
+                    InlineKeyboardButton("↩️ Отозвать (мошенник)", callback_data=f"owner_revoke_{uid}_{pid}"),
                 ]]),
             )
         except Exception as e:
-            logging.error(f"Failed to forward transfer to owner: {e}")
+            logging.error(f"Failed to notify owner of auto-confirmed transfer: {e}")
         return
 
     if not has_access(uid):
@@ -1852,6 +1854,32 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if d.startswith("show_card_ru_"):
+        pid = d[13:]
+        p = PLANS[pid]
+        await context.bot.send_message(
+            uid,
+            f"💳 Номер карты (РФ):\n\n"
+            f"`{CARD_RU}`\n\n"
+            f"Сумма: {p['price_rub']} ₽ — Максим А.\n"
+            f"_Нажми на номер выше чтобы скопировать_",
+            parse_mode="Markdown",
+        )
+        return
+
+    if d.startswith("show_card_rev_"):
+        pid = d[14:]
+        p = PLANS[pid]
+        await context.bot.send_message(
+            uid,
+            f"💳 Номер карты (Revolut):\n\n"
+            f"`{CARD_REVOLUT}`\n\n"
+            f"Сумма: {p['price_usdt']}$ — Maksim A.\n"
+            f"_Нажми на номер выше чтобы скопировать_",
+            parse_mode="Markdown",
+        )
+        return
+
     if d.startswith("pay_transfer_"):
         pid = d[13:]
         p   = PLANS[pid]
@@ -1859,14 +1887,16 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await userdb.save_pending_transfer(uid, pid, "ru_card")
         await q.message.edit_text(
             f"🏦 *Перевод на карту (РФ)*\n\n"
-            f"Номер карты — нажми чтобы скопировать:\n"
-            f"`{CARD_RU}`\n\n"
             f"Сумма: *{p['price_rub']} ₽*\n"
             f"Получатель: Максим А.\n\n"
-            f"После перевода *отправь скриншот* чека прямо в этот чат — "
-            f"оплата будет подтверждена вручную в течение нескольких минут.",
+            f"👇 Нажми кнопку ниже — номер карты появится отдельным сообщением, "
+            f"его легко скопировать.\n\n"
+            f"После перевода *отправь скриншот* чека прямо в этот чат.",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data=f"plan_{pid}")]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"💳 Показать номер карты", callback_data=f"show_card_ru_{pid}")],
+                [InlineKeyboardButton("← Назад", callback_data=f"plan_{pid}")],
+            ]),
         )
         return
 
@@ -1877,14 +1907,15 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await userdb.save_pending_transfer(uid, pid, "revolut")
         await q.message.edit_text(
             f"🌐 *Оплата Visa Revolut (зарубежный банк)*\n\n"
-            f"Номер карты — нажми чтобы скопировать:\n"
-            f"`{CARD_REVOLUT}`\n\n"
             f"Сумма: *{p['price_usdt']}$*\n"
             f"Получатель: Maksim A.\n\n"
-            f"После перевода *отправь скриншот* чека прямо в этот чат — "
-            f"оплата будет подтверждена вручную в течение нескольких минут.",
+            f"👇 Нажми кнопку ниже — номер карты появится отдельным сообщением.\n\n"
+            f"После перевода *отправь скриншот* чека прямо в этот чат.",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data=f"plan_{pid}")]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"💳 Показать номер карты", callback_data=f"show_card_rev_{pid}")],
+                [InlineKeyboardButton("← Назад", callback_data=f"plan_{pid}")],
+            ]),
         )
         return
 
@@ -1980,6 +2011,36 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
         await q.answer("✅ Баланс пополнен!", show_alert=True)
+        return
+
+    if d.startswith("owner_revoke_"):
+        if uid != OWNER_ID:
+            return
+        parts = d.split("_")  # owner_revoke_UID_PLAN
+        target_uid = int(parts[2])
+        plan_id = parts[3]
+        p = PLANS[plan_id]
+        # Remove credits that were auto-granted
+        u = get_user(target_uid)
+        if p["credits"] == -1:
+            u["unlimited_until"] = None
+        else:
+            u["credits"] = max(0, u.get("credits", 0) - p["credits"])
+        if p.get("seo_credits", 0) > 0:
+            u["seo_credits"] = max(0, u.get("seo_credits", 0) - p["seo_credits"])
+        try:
+            await q.message.edit_caption(caption=q.message.caption + "\n\n↩️ ОТОЗВАНО")
+        except Exception:
+            pass
+        try:
+            await context.bot.send_message(
+                target_uid,
+                "⚠️ Оплата отозвана.\n\n"
+                "Скриншот не прошёл проверку. Обратись в поддержку /help или выбери другой способ оплаты /buy.",
+            )
+        except Exception:
+            pass
+        await q.answer("↩️ Баланс отозван!", show_alert=True)
         return
 
     if d.startswith("owner_reject_"):
