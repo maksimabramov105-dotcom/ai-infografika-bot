@@ -225,20 +225,27 @@ async def notify_owner(context: ContextTypes.DEFAULT_TYPE, text: str):
 FONT_DIR = "/tmp/fonts"
 os.makedirs(FONT_DIR, exist_ok=True)
 
+# Roboto — основной (полная кириллица), NotoSans — запасной
 _FONT_SOURCES = [
-    ("bold",    f"{FONT_DIR}/NotoSans-Bold.ttf",
+    ("bold",    f"{FONT_DIR}/Roboto-Bold.ttf",
+     "https://github.com/googlefonts/roboto/raw/main/fonts/ttf/Roboto-Bold.ttf"),
+    ("regular", f"{FONT_DIR}/Roboto-Regular.ttf",
+     "https://github.com/googlefonts/roboto/raw/main/fonts/ttf/Roboto-Regular.ttf"),
+    ("bold_fallback",    f"{FONT_DIR}/NotoSans-Bold.ttf",
      "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf"),
-    ("regular", f"{FONT_DIR}/NotoSans-Regular.ttf",
+    ("regular_fallback", f"{FONT_DIR}/NotoSans-Regular.ttf",
      "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf"),
 ]
 _SYSTEM_FONTS = {
     "bold": [
+        f"{FONT_DIR}/Roboto-Bold.ttf",
         f"{FONT_DIR}/NotoSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     ],
     "regular": [
+        f"{FONT_DIR}/Roboto-Regular.ttf",
         f"{FONT_DIR}/NotoSans-Regular.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
@@ -247,21 +254,44 @@ _SYSTEM_FONTS = {
 }
 
 
+def _is_valid_font(path: str) -> bool:
+    """Проверяет что файл является рабочим TTF (не битый и поддерживает кириллицу)."""
+    try:
+        f = ImageFont.truetype(path, 20)
+        # Проверяем рендеринг кириллицы
+        img = Image.new("RGB", (100, 30))
+        ImageDraw.Draw(img).text((0, 0), "Привет", font=f, fill=(255, 255, 255))
+        return True
+    except Exception:
+        return False
+
+
 def download_fonts():
-    for _, path, url in _FONT_SOURCES:
-        if not os.path.exists(path):
-            try:
-                urllib.request.urlretrieve(url, path)
-                logging.info(f"Font downloaded: {path}")
-            except Exception as e:
-                logging.warning(f"Font download failed: {e}")
+    for name, path, url in _FONT_SOURCES:
+        # Скачиваем если файл отсутствует или битый
+        if os.path.exists(path) and _is_valid_font(path):
+            logging.info(f"Font OK: {path}")
+            continue
+        # Удаляем битый файл если есть
+        if os.path.exists(path):
+            os.remove(path)
+        try:
+            urllib.request.urlretrieve(url, path)
+            if _is_valid_font(path):
+                logging.info(f"Font downloaded and verified: {path}")
+            else:
+                os.remove(path)
+                logging.warning(f"Font downloaded but failed Cyrillic check: {path}")
+        except Exception as e:
+            logging.warning(f"Font download failed ({name}): {e}")
 
 
 def get_font(style: str, size: int) -> ImageFont.FreeTypeFont:
     for path in _SYSTEM_FONTS.get(style, _SYSTEM_FONTS["regular"]):
         if os.path.exists(path):
             try:
-                return ImageFont.truetype(path, size)
+                font = ImageFont.truetype(path, size)
+                return font
             except Exception:
                 continue
     return ImageFont.load_default()
