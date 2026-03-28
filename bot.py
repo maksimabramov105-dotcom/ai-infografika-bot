@@ -524,7 +524,6 @@ def plans_keyboard():
 def payment_keyboard(plan_id: str):
     p = PLANS[plan_id]
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"💳 Картой  {p['price_rub']} ₽",       callback_data=f"pay_card_{plan_id}")],
         [InlineKeyboardButton(f"🏦 Перевод на карту  {p['price_rub']} ₽", callback_data=f"pay_transfer_{plan_id}")],
         [InlineKeyboardButton(f"🌐 Visa Revolut  {p['price_usdt']}$",  callback_data=f"pay_revolut_{plan_id}")],
         [InlineKeyboardButton(f"₮ USDT  {p['price_usdt']}$",          callback_data=f"pay_crypto_{plan_id}_USDT"),
