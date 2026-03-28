@@ -35,9 +35,14 @@ logging.basicConfig(level=logging.INFO)
 # Формат: "КОД": {"credits": N, "used_by": set()}
 # credits=-1 → добавить к безлимиту на 7 дней
 PROMO_CODES: dict[str, dict] = {
-    "SORRY5":   {"credits": 5,  "used_by": set()},   # для рассылки при сбоях
+    "TOP777":   {"credits": 3,  "used_by": set()},   # для рассылки при сбоях
+    "ТОП777":   {"credits": 3,  "used_by": set()},   # для рассылки при сбоях (кириллица)
     "WELCOME3": {"credits": 3,  "used_by": set()},   # приветственный
 }
+
+# Реквизиты для ручной оплаты переводом
+CARD_RU      = "2201 0402 0305 8978"   # Сбербанк / Т-Банк (РФ)
+CARD_REVOLUT = "4216 0400 2047 6089"   # Visa Revolut (зарубежный банк)
 
 # ── ТАРИФНЫЕ ПЛАНЫ ───────────────────────────────────────────────────────────────
 FREE_CREDITS = 1
@@ -199,14 +204,22 @@ def get_font(style: str, size: int) -> ImageFont.FreeTypeFont:
 
 
 # ── GPT-4o VISION ────────────────────────────────────────────────────────────────
-def analyze_product_image(image_path: str) -> dict:
+def analyze_product_image(image_path: str, user_caption: str = "") -> dict:
     with open(image_path, "rb") as f:
         img_b64 = base64.b64encode(f.read()).decode()
 
-    prompt = """Ты эксперт по маркетингу на маркетплейсах (Wildberries, OZON).
+    user_hint_block = ""
+    if user_caption:
+        user_hint_block = f"""
+ВАЖНО: Пользователь указал пожелания: «{user_caption}»
+Обязательно учти их при формировании scene_description — сцена ДОЛЖНА соответствовать этим пожеланиям.
+Например если пользователь написал «светлый интерьер, на диване» — scene_description должно быть про светлый интерьер с диваном.
+"""
+
+    prompt = f"""Ты эксперт по маркетингу на маркетплейсах (Wildberries, OZON, Яндекс Маркет).
 Посмотри на фото товара и верни ТОЛЬКО JSON (без markdown, без пояснений):
 
-{
+{{
   "title": "ЗАГОЛОВОК КРУПНО (макс 28 символов, как на WB — КАПСЛОК или смешанный)",
   "subtitle": "Подзаголовок / УТП (макс 40 символов)",
   "features": [
@@ -217,14 +230,14 @@ def analyze_product_image(image_path: str) -> dict:
   ],
   "badge": "ХИТ | НОВИНКА | -20% | БЕСТСЕЛЛЕР | ТОП",
   "color_theme": "warm | cool | neutral | dark",
-  "scene_description": "Детальное описание красивой фоновой сцены для товара на английском. Например для свечи с ароматом апельсина и корицы: 'cozy dark background with soft bokeh lights, orange slices, cinnamon sticks, dried flowers, warm golden tones, luxury lifestyle product photography'. Описание должно включать элементы которые ассоциируются с товаром (ингредиенты, назначение, стиль жизни). НЕ включай сам товар в описание сцены — только окружение и декор."
-}
-
+  "scene_description": "Детальное описание красивой сцены для товара НА АНГЛИЙСКОМ. Описывай окружение, декор, атмосферу — НЕ сам товар. Например для свечи: 'cozy bright living room, sofa with soft cushions, warm morning light, dried flowers, candles around'."
+}}
+{user_hint_block}
 Правила:
 - Пиши по-русски (кроме scene_description — оно на АНГЛИЙСКОМ)
 - Преимущества — конкретные, с цифрами (напр: "Горит 25 часов", "100% кокос. воск")
 - color_theme: warm=еда/beauty/дом/свечи, cool=техника/спорт, neutral=одежда, dark=люкс
-- scene_description — ВСЕГДА на английском, максимально детально, для генерации фонового изображения
+- scene_description — ВСЕГДА на английском, максимально детально, с учётом пожеланий пользователя
 """
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -232,7 +245,7 @@ def analyze_product_image(image_path: str) -> dict:
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
             {"type": "text", "text": prompt},
         ]}],
-        max_tokens=500,
+        max_tokens=600,
     )
     raw = re.sub(r"```json|```", "", response.choices[0].message.content.strip()).strip()
     try:
@@ -262,30 +275,35 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
 
     feat_text = "\n".join(f"• {f}" for f in features)
 
-    # Дополнительный контекст от пользователя
-    user_hint = ""
+    # Пожелания пользователя идут ПЕРВЫМИ как обязательные требования
+    mandatory_user = ""
     if user_caption:
-        user_hint = f"\nДополнительные пожелания от пользователя: {user_caption}\n"
+        mandatory_user = f"""
+⚠️ ОБЯЗАТЕЛЬНО — ПОЖЕЛАНИЯ КЛИЕНТА (приоритет выше всего остального):
+«{user_caption}»
+Сцена и окружение ДОЛЖНЫ точно соответствовать этим пожеланиям.
+Если клиент написал «светлый интерьер» — фон должен быть светлым/белым/бежевым.
+Если написал «на диване» — товар должен лежать/стоять на диване или рядом с ним.
+Если написал «с цветами» — добавь живые цветы в сцену.
+"""
 
-    prompt = f"""Создай профессиональную инфографику-карточку товара для маркетплейса (Wildberries/OZON). Квадратный формат 1:1, 1080x1080.
-
-ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
-1. ТОВАР С ФОТО должен быть ГЛАВНЫМ ЭЛЕМЕНТОМ — крупно в центре, занимает 50-60% карточки
-2. Товар должен выглядеть ТОЧНО как на приложенном фото — та же банка/упаковка/форма/этикетка
-3. Вокруг товара создай красивую сцену: {scene}
-4. Добавь КРАСИВЫЙ ТЕКСТ прямо на изображение:
-   - Заголовок: "{title}" — крупным красивым шрифтом сверху или сбоку
-   - Подзаголовок: "{subtitle}" — меньшим элегантным шрифтом
-   - Преимущества разместить красиво вокруг товара, в разных местах с разными шрифтами:
+    prompt = f"""Создай профессиональную инфографику-карточку товара для маркетплейса (Wildberries/OZON/Яндекс Маркет). Квадратный формат 1:1, 1080x1080.
+{mandatory_user}
+ТРЕБОВАНИЯ К ДИЗАЙНУ (уровень топовых конкурентов):
+1. ТОВАР — главный элемент, крупно, реалистично, в центре или чуть смещён для текста. Занимает 45-55% кадра.
+2. ТОВАР должен выглядеть ТОЧНО как на приложенном фото — та же форма/упаковка/цвет/этикетка. НЕ искажай.
+3. СЦЕНА вокруг товара: {scene}
+   Добавь декоративные элементы, ассоциирующиеся с товаром: цветы, листья, ткани, ингредиенты — всё что создаёт атмосферу.
+4. ТЕКСТ на карточке (на русском языке):
+   - Заголовок: «{title}» — крупный жирный шрифт, контрастный, сверху карточки
+   - Подзаголовок: «{subtitle}» — изящный шрифт, меньше заголовка
+   - 4 преимущества разместить ВОКРУГ товара с разных сторон (не только снизу):
 {feat_text}
-5. Текст должен быть НА РУССКОМ ЯЗЫКЕ
-6. Шрифты: используй разные размеры и стили — крупный жирный заголовок, элегантный курсив для подзаголовка, чёткий для буллетов
-7. Текст может быть в разных местах: сверху, по бокам, снизу — гармонично вписан в композицию
-8. Стиль: премиальный, богатый, как в профессиональном дизайне для маркетплейсов
-9. Цвета текста должны контрастировать с фоном и быть хорошо читаемы
-10. НЕ ИСКАЖАЙ товар — он должен выглядеть реалистично, как на оригинальном фото
-{user_hint}
-Стиль: Wildberries/OZON инфографика премиум-класса."""
+5. ТИПОГРАФИКА: используй РАЗНЫЕ размеры и стили — крупный bold заголовок, elegant italic подзаголовок, clean labels для буллетов. Текст должен быть органично вписан в дизайн, как у профи.
+6. ЦВЕТА: элегантная цветовая схема, текст читаем, цвета гармонируют с товаром и сценой.
+7. КАЧЕСТВО: уровень профессионального дизайна для топовых продавцов на маркетплейсах — красиво, нестандартно, уникально.
+
+Стиль: премиальная инфографика для маркетплейсов, конкурентный дизайн, не шаблонный."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -501,9 +519,11 @@ def plans_keyboard():
 def payment_keyboard(plan_id: str):
     p = PLANS[plan_id]
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"💳 Картой  {p['price_rub']} ₽",   callback_data=f"pay_card_{plan_id}")],
-        [InlineKeyboardButton(f"₮ USDT  {p['price_usdt']}$",      callback_data=f"pay_crypto_{plan_id}_USDT"),
-         InlineKeyboardButton(f"💎 TON  {p['price_ton']}",        callback_data=f"pay_crypto_{plan_id}_TON")],
+        [InlineKeyboardButton(f"💳 Картой  {p['price_rub']} ₽",       callback_data=f"pay_card_{plan_id}")],
+        [InlineKeyboardButton(f"🏦 Перевод на карту  {p['price_rub']} ₽", callback_data=f"pay_transfer_{plan_id}")],
+        [InlineKeyboardButton(f"🌐 Visa Revolut  {p['price_usdt']}$",  callback_data=f"pay_revolut_{plan_id}")],
+        [InlineKeyboardButton(f"₮ USDT  {p['price_usdt']}$",          callback_data=f"pay_crypto_{plan_id}_USDT"),
+         InlineKeyboardButton(f"💎 TON  {p['price_ton']}",            callback_data=f"pay_crypto_{plan_id}_TON")],
         [InlineKeyboardButton("← Назад", callback_data="buy")],
     ])
 
@@ -545,13 +565,13 @@ def user_error_message(e: Exception) -> str:
         return (
             "⚠️ *Сервис временно перегружен* — мы уже знаем об этом и чиним.\n\n"
             "Попробуй через 5–10 минут. В качестве извинения введи промокод "
-            "*SORRY5* командой /promo и получи 5 карточек бесплатно! 🎁"
+            "*ТОП777* командой /promo и получи 3 карточки бесплатно! 🎁"
         )
     if isinstance(e, AuthenticationError):
         return (
             "🔧 *Технические работы* — сервис временно недоступен.\n\n"
             "Мы уже чиним! Попробуй позже, а пока держи промокод "
-            "*SORRY5* — /promo для 5 бесплатных карточек."
+            "*ТОП777* — /promo для 3 бесплатных карточек."
         )
     if isinstance(e, APIConnectionError):
         return (
@@ -574,16 +594,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     get_user(uid)
     await update.message.reply_text(
-        "🎨 *AI Карточки для маркетплейсов*\n\n"
-        "Превращаю обычные фото товаров в *продающие карточки* "
-        "для Wildberries, OZON и других маркетплейсов.\n\n"
+        "🏆 *TOP SELLER — AI Карточки для маркетплейсов*\n\n"
+        "Превращаю обычные фото товаров в *продающие инфографики* "
+        "для Wildberries, OZON, Яндекс Маркет и любых других площадок.\n\n"
         "📸 *Как пользоваться:*\n"
         "1. Отправь фото товара\n"
         "2. ИИ создаст красивую сцену с товаром\n"
         "3. Получи готовую карточку 1080×1080\n\n"
-        "💡 *Совет:* добавь подпись к фото!\n"
-        "_Пример: «свеча апельсин и корица, тёплый уютный стиль, с цветами»_\n"
-        "Так результат будет точнее.\n\n"
+        "💡 *Совет:* добавь подпись к фото с пожеланиями!\n"
+        "_Пример: «подушка, светлый интерьер, на диване, с цветами»_\n"
+        "Результат будет точно соответствовать твоим пожеланиям.\n\n"
         f"🎁 У тебя *{FREE_CREDITS} бесплатная* карточка.\n\n"
         "⬇️ Выбери действие:",
         parse_mode="Markdown",
@@ -615,7 +635,7 @@ async def cmd_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "🎁 *Промокод*\n\n"
             "Введи команду в формате:\n`/promo ТВОЙКОД`\n\n"
-            "Пример: `/promo SORRY5`",
+            "Пример: `/promo ТОП777`",
             parse_mode="Markdown",
         )
         return
@@ -642,6 +662,65 @@ async def cmd_admin_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Промокод *{code}* на *{credits} карточек* создан.", parse_mode="Markdown")
 
 
+async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для владельца: /confirm USER_ID PLAN_ID — подтвердить оплату переводом."""
+    if update.effective_user.id != OWNER_ID:
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Использование: /confirm USER_ID PLAN_ID\nПример: /confirm 123456789 single")
+        return
+    try:
+        target_uid = int(args[0])
+        plan_id    = args[1]
+    except ValueError:
+        await update.message.reply_text("Неверный формат. USER_ID должен быть числом.")
+        return
+    if plan_id not in PLANS:
+        await update.message.reply_text(f"Тариф «{plan_id}» не найден. Доступные: {', '.join(PLANS.keys())}")
+        return
+    apply_plan(target_uid, plan_id)
+    p = PLANS[plan_id]
+    await update.message.reply_text(f"✅ Оплата подтверждена. {p['emoji']} {p['name']} активирован для {target_uid}.")
+    try:
+        await context.bot.send_message(
+            target_uid,
+            f"🎉 *Оплата подтверждена!*\n\n"
+            f"{p['emoji']} *{p['name']}* активирован.\n\n"
+            f"{credits_display(target_uid)}\n\n"
+            f"Присылай фото товаров — создадим карточки! 🎨",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logging.warning(f"Could not notify user {target_uid}: {e}")
+
+
+async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для владельца: /reject USER_ID — отклонить заявку на оплату."""
+    if update.effective_user.id != OWNER_ID:
+        return
+    args = context.args
+    if not args:
+        await update.message.reply_text("Использование: /reject USER_ID")
+        return
+    try:
+        target_uid = int(args[0])
+    except ValueError:
+        await update.message.reply_text("Неверный формат USER_ID.")
+        return
+    await update.message.reply_text(f"❌ Заявка {target_uid} отклонена.")
+    try:
+        await context.bot.send_message(
+            target_uid,
+            "❌ *Оплата не подтверждена.*\n\n"
+            "Скриншот не прошёл проверку. Если ты уверен, что перевод совершён — "
+            "отправь скриншот ещё раз или выбери другой способ оплаты /buy.",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logging.warning(f"Could not notify user {target_uid}: {e}")
+
+
 async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Только для владельца: /broadcast ТЕКСТ — рассылка всем пользователям."""
     if update.effective_user.id != OWNER_ID:
@@ -663,6 +742,46 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     get_user(uid)
+
+    # Если пользователь ждёт подтверждения перевода — принимаем скриншот
+    transfer_info = get_user(uid).get("awaiting_transfer")
+    if transfer_info:
+        pid    = transfer_info["plan_id"]
+        method = transfer_info["method"]
+        p      = PLANS[pid]
+        method_label = "Перевод РФ карта" if method == "ru_card" else "Visa Revolut"
+        user_obj = update.effective_user
+        user_str = f"@{user_obj.username}" if user_obj.username else f"ID {uid}"
+
+        # Пересылаем скриншот владельцу
+        if OWNER_ID:
+            try:
+                photo = update.message.photo[-1]
+                await context.bot.send_photo(
+                    OWNER_ID,
+                    photo.file_id,
+                    caption=(
+                        f"💰 *Заявка на оплату переводом*\n\n"
+                        f"Пользователь: {user_str} (ID: `{uid}`)\n"
+                        f"Способ: {method_label}\n"
+                        f"Тариф: {p['emoji']} {p['name']} — {p['description']}\n\n"
+                        f"Для подтверждения: `/confirm {uid} {pid}`\n"
+                        f"Для отказа: `/reject {uid}`"
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception as e:
+                logging.warning(f"Failed to forward transfer screenshot to owner: {e}")
+
+        del get_user(uid)["awaiting_transfer"]
+        await update.message.reply_text(
+            "✅ *Скриншот получен!*\n\n"
+            "Мы проверим оплату и активируем твои карточки в течение нескольких минут.\n\n"
+            "Ожидай уведомления от бота 🙏",
+            parse_mode="Markdown",
+        )
+        return
+
     if not has_access(uid):
         await update.message.reply_text(
             "😔 *Карточки закончились.*\n\nКупи пакет или активируй промокод:",
@@ -686,7 +805,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_caption = update.message.caption or ""
 
         await msg.edit_text("🔍 Анализирую товар...")
-        data = analyze_product_image(img_path)
+        data = analyze_product_image(img_path, user_caption=user_caption)
 
         await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...")
         out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
@@ -750,7 +869,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_buy(update, context)
     elif text == "🎁 Промокод":
         await update.message.reply_text(
-            "🎁 *Введи промокод командой:*\n\n`/promo ТВОЙКОД`\n\nПример: `/promo SORRY5`",
+            "🎁 *Введи промокод командой:*\n\n`/promo ТВОЙКОД`\n\nПример: `/promo ТОП777`",
             parse_mode="Markdown",
         )
 
@@ -788,11 +907,44 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if d.startswith("pay_transfer_"):
+        pid = d[13:]
+        p   = PLANS[pid]
+        get_user(uid)["awaiting_transfer"] = {"plan_id": pid, "method": "ru_card"}
+        await q.message.edit_text(
+            f"🏦 *Перевод на карту (РФ)*\n\n"
+            f"Номер карты: `{CARD_RU}`\n"
+            f"Сумма: *{p['price_rub']} ₽*\n"
+            f"Получатель: Максим А.\n\n"
+            f"После перевода *отправь скриншот* чека прямо в этот чат — "
+            f"оплата будет подтверждена вручную в течение нескольких минут.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data=f"plan_{pid}")]]),
+        )
+        return
+
+    if d.startswith("pay_revolut_"):
+        pid = d[12:]
+        p   = PLANS[pid]
+        get_user(uid)["awaiting_transfer"] = {"plan_id": pid, "method": "revolut"}
+        await q.message.edit_text(
+            f"🌐 *Оплата Visa Revolut (зарубежный банк)*\n\n"
+            f"Номер карты: `{CARD_REVOLUT}`\n"
+            f"Сумма: *{p['price_usdt']}$*\n"
+            f"Получатель: Maksim A.\n\n"
+            f"После перевода *отправь скриншот* чека прямо в этот чат — "
+            f"оплата будет подтверждена вручную в течение нескольких минут.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data=f"plan_{pid}")]]),
+        )
+        return
+
     if d.startswith("pay_card_"):
         pid = d[9:]
         if not YOOKASSA_TOKEN:
             await q.message.reply_text(
-                "⚙️ Оплата картой подключается. Напиши @admin для активации вручную."
+                "⚙️ Оплата картой через платёжную систему временно недоступна.\n\n"
+                "Воспользуйся переводом на карту или крипто-оплатой выше."
             )
             return
         p = PLANS[pid]
@@ -889,20 +1041,22 @@ async def setup_bot(app):
     bot = app.bot
     try:
         await bot.set_my_description(
-            "🎨 ИИ-генератор карточек товаров для маркетплейсов\n\n"
-            "Превращаю обычные фото в продающие карточки для Wildberries, OZON "
-            "и других площадок.\n\n"
+            "🎨 TOP SELLER — ИИ-генератор карточек товаров для маркетплейсов\n\n"
+            "Превращаю обычные фото в продающие инфографики для Wildberries, OZON, "
+            "Яндекс Маркет и любых других площадок.\n\n"
             "Что умеет бот:\n"
             "📸 Принимает фото товара\n"
             "🤖 ИИ создаёт красивую сцену вокруг товара\n"
             "✨ Генерирует готовую карточку 1080×1080\n"
-            "🎯 Добавляет продающий текст и дизайн\n\n"
+            "🎯 Добавляет продающий текст и премиальный дизайн\n"
+            "🏆 Уровень топовых продавцов на маркетплейсах\n\n"
             "Как пользоваться:\n"
-            "Отправь фото товара с описанием — получи карточку за 30 секунд!"
+            "Отправь фото товара с описанием — получи карточку за 30 секунд!\n\n"
+            "Подходит для: WB, OZON, Яндекс Маркет, AliExpress, Авито и других."
         )
         await bot.set_my_short_description(
-            "🎨 ИИ-генератор карточек товаров для WB, OZON. "
-            "Отправь фото — получи готовую продающую карточку!"
+            "🏆 TOP SELLER — ИИ карточки для WB, OZON, Яндекс Маркет. "
+            "Отправь фото — получи продающую инфографику за 30 сек!"
         )
         await bot.set_my_commands([
             ("start",   "Запустить бота"),
@@ -925,6 +1079,8 @@ def main():
     app.add_handler(CommandHandler("promo",     cmd_promo))
     app.add_handler(CommandHandler("addpromo",  cmd_admin_promo))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
+    app.add_handler(CommandHandler("confirm",   cmd_confirm))
+    app.add_handler(CommandHandler("reject",    cmd_reject))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
