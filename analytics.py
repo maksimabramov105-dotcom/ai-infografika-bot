@@ -8,23 +8,29 @@ from openai import OpenAI
 # Uses the same client as bot.py — passed as parameter
 
 
-async def analyze_niche(client: OpenAI, query: str, wb_data: list, ozon_data: list) -> str:
-    """Analyze marketplace niche using parsed data + GPT-4o."""
-    data_summary = f"WB товары ({len(wb_data)} шт.):\n"
-    for p in wb_data[:15]:
-        data_summary += f"- {p['name']} | {p.get('brand','')} | {p['price']}₽ | ★{p.get('rating',0)} | {p.get('feedbacks',0)} отзывов\n"
+MKT_NAMES = {"wb": "Wildberries", "ozon": "OZON", "amazon": "Amazon", "all": "Wildberries + OZON + Amazon"}
 
+
+async def analyze_niche(client: OpenAI, query: str, wb_data: list, ozon_data: list, marketplace: str = "all") -> str:
+    """Analyze marketplace niche using parsed data + GPT-4o."""
+    mkt_name = MKT_NAMES.get(marketplace, marketplace)
+
+    data_summary = ""
+    if wb_data:
+        data_summary += f"WB товары ({len(wb_data)} шт.):\n"
+        for p in wb_data[:15]:
+            data_summary += f"- {p['name']} | {p.get('brand','')} | {p['price']}₽ | ★{p.get('rating',0)} | {p.get('feedbacks',0)} отзывов\n"
     if ozon_data:
         data_summary += f"\nOZON товары ({len(ozon_data)} шт.):\n"
         for p in ozon_data[:10]:
             data_summary += f"- {p['name']} | {p['price']}₽\n"
 
-    prompt = f"""Ты эксперт по маркетплейсам WB/OZON. Проанализируй нишу по запросу «{query}».
+    prompt = f"""Ты эксперт по маркетплейсу {mkt_name}. Проанализируй нишу по запросу «{query}» именно для {mkt_name}.
 
 Данные с маркетплейсов:
-{data_summary}
+{data_summary if data_summary else "(нет данных — используй экспертные знания)"}
 
-{"Если данных мало — используй свои экспертные знания о российском рынке маркетплейсов (WB, OZON)." if len(wb_data) < 5 else ""}
+Если данных мало — используй свои знания о рынке {mkt_name} для этого товара.
 
 Верни СТРОГО JSON:
 {{
@@ -47,14 +53,15 @@ async def analyze_niche(client: OpenAI, query: str, wb_data: list, ozon_data: li
     return response.choices[0].message.content.strip()
 
 
-async def analyze_season(client: OpenAI, product: str) -> str:
-    """Analyze seasonality of a product for Russian market."""
+async def analyze_season(client: OpenAI, product: str, marketplace: str = "all") -> str:
+    """Analyze seasonality of a product for the chosen marketplace."""
+    mkt_name = MKT_NAMES.get(marketplace, marketplace)
     current_month = datetime.now(timezone.utc).month
     month_names = ["", "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
                    "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
 
-    prompt = f"""Ты эксперт по маркетплейсам РФ (WB, OZON, Яндекс Маркет).
-Проанализируй сезонность товара: «{product}»
+    prompt = f"""Ты эксперт по маркетплейсу {mkt_name}.
+Проанализируй сезонность товара: «{product}» именно для {mkt_name}.
 Сейчас месяц #{current_month} ({month_names[current_month]}).
 
 Верни СТРОГО JSON:

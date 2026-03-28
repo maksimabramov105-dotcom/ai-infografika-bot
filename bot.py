@@ -1610,6 +1610,50 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if d.startswith("ana_"):
+        # Format: ana_{cmd}_{marketplace}:{query}
+        # e.g. ana_nicha_wb:кокосовое масло
+        rest = d[4:]  # strip "ana_"
+        parts = rest.split(":", 1)
+        if len(parts) < 2:
+            return
+        cmd_market = parts[0]   # e.g. "nicha_wb"
+        query = parts[1].strip()
+        cmd_parts = cmd_market.split("_", 1)
+        if len(cmd_parts) < 2:
+            return
+        cmd, marketplace = cmd_parts[0], cmd_parts[1]
+
+        await q.answer()
+        await q.message.delete()
+
+        async def _reply(text):
+            return await context.bot.send_message(uid, text)
+
+        if cmd == "nicha":
+            await _run_nicha(uid, query, marketplace, _reply)
+        elif cmd == "season":
+            mkt_label = {"wb": "Wildberries", "ozon": "OZON", "amazon": "Amazon", "all": "все площадки"}
+            msg = await _reply(f"📅 Анализирую «{query}» ({mkt_label.get(marketplace, marketplace)})…")
+            try:
+                await userdb.use_analytics_credit(uid, 1)
+                raw = await analyze_season(client, query, marketplace)
+                text = format_season(query, raw)
+                await userdb.log_analysis(uid, query, f"season_{marketplace}", raw)
+                await msg.edit_text(text, parse_mode="Markdown")
+            except Exception as e:
+                logging.exception(e)
+                await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+        elif cmd == "full":
+            # Recreate update-like send for _run_full
+            class _FakeUpdate:
+                class message:
+                    @staticmethod
+                    async def reply_text(text, **kw):
+                        return await context.bot.send_message(uid, text, **kw)
+            await _run_full(uid, query, marketplace, _FakeUpdate())
+        return
+
     if d == "buy_section_cards":
         await q.message.edit_text(
             "🎨 *Инфографика & SEO*\n\n"
@@ -2043,38 +2087,39 @@ async def _check_analytics_credit(uid: int, cost: int) -> bool:
     return bal >= cost
 
 
+def _marketplace_keyboard(cmd: str, query: str) -> InlineKeyboardMarkup:
+    """Keyboard asking which marketplace to analyze."""
+    import urllib.parse
+    q = urllib.parse.quote(query)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🟣 Wildberries", callback_data=f"ana_{cmd}_wb:{query[:60]}"),
+            InlineKeyboardButton("🔵 OZON",        callback_data=f"ana_{cmd}_ozon:{query[:60]}"),
+            InlineKeyboardButton("🟠 Amazon",      callback_data=f"ana_{cmd}_amazon:{query[:60]}"),
+        ],
+        [InlineKeyboardButton("🌐 Все сразу",     callback_data=f"ana_{cmd}_all:{query[:60]}")],
+    ])
+
+
 async def cmd_nicha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     query = " ".join(context.args).strip() if context.args else ""
     if not query:
         await update.message.reply_text(
-            "🔍 *Анализ ниши*\n\nИспользование: `/nicha кокосовое масло`\n\n"
-            "Показывает: конкуренцию, цены, лидеров, рекомендацию входить или нет.",
+            "🔍 *Анализ ниши*\n\nИспользование: `/nicha кокосовое масло`",
             parse_mode="Markdown",
         )
         return
-
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            f"🔍 *Анализ ниши* — 149₽\n\n"
-            f"У тебя нет кредитов аналитики. Купи анализ:",
-            parse_mode="Markdown",
-            reply_markup=_analytics_buy_keyboard("nicha"),
+            "🔍 *Анализ ниши* — 149₽\n\nКупи кредиты аналитики:",
+            parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("nicha"),
         )
         return
-
-    msg = await update.message.reply_text("🔍 Анализирую нишу «{}»…".format(query))
-    try:
-        await userdb.use_analytics_credit(uid, 1)
-        wb_data = await parsers.search_wb(query)
-        ozon_data = await parsers.search_ozon(query)
-        raw = await analyze_niche(client, query, wb_data, ozon_data)
-        text = format_niche(query, raw)
-        await userdb.log_analysis(uid, query, "nicha", raw)
-        await msg.edit_text(text, parse_mode="Markdown")
-    except Exception as e:
-        logging.exception(e)
-        await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+    await update.message.reply_text(
+        f"🔍 *Анализ ниши:* «{query}»\n\nКакую площадку анализировать?",
+        parse_mode="Markdown", reply_markup=_marketplace_keyboard("nicha", query),
+    )
 
 
 async def cmd_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2082,30 +2127,20 @@ async def cmd_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product = " ".join(context.args).strip() if context.args else ""
     if not product:
         await update.message.reply_text(
-            "📅 *Анализ сезонности*\n\nИспользование: `/season пуховик`\n\n"
-            "Показывает: пики продаж, лучшее время входа, текущий статус.",
+            "📅 *Анализ товаров + сезонность*\n\nИспользование: `/season пуховик`",
             parse_mode="Markdown",
         )
         return
-
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            f"📅 *Анализ сезонности* — 149₽\n\nКупи кредиты аналитики:",
-            parse_mode="Markdown",
-            reply_markup=_analytics_buy_keyboard("season"),
+            "📅 *Анализ сезонности* — 149₽\n\nКупи кредиты аналитики:",
+            parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("season"),
         )
         return
-
-    msg = await update.message.reply_text("📅 Анализирую сезонность «{}»…".format(product))
-    try:
-        await userdb.use_analytics_credit(uid, 1)
-        raw = await analyze_season(client, product)
-        text = format_season(product, raw)
-        await userdb.log_analysis(uid, product, "season", raw)
-        await msg.edit_text(text, parse_mode="Markdown")
-    except Exception as e:
-        logging.exception(e)
-        await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+    await update.message.reply_text(
+        f"📅 *Анализ товаров + сезонность:* «{product}»\n\nКакую площадку учитывать?",
+        parse_mode="Markdown", reply_markup=_marketplace_keyboard("season", product),
+    )
 
 
 async def cmd_supplier(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2113,21 +2148,19 @@ async def cmd_supplier(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product = " ".join(context.args).strip() if context.args else ""
     if not product:
         await update.message.reply_text(
-            "🏭 *Поставщики*\n\nИспользование: `/supplier кокосовое масло`\n\n"
-            "Показывает: поставщиков на 1688/Alibaba, цены, маржу на WB.",
+            "🏭 *Поиск поставщиков*\n\nИспользование: `/supplier кокосовое масло`\n\n"
+            "Ищет поставщиков на 1688 и Alibaba с ценами и маржой.",
             parse_mode="Markdown",
         )
         return
-
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            f"🏭 *Анализ поставщиков* — 199₽\n\nКупи кредиты аналитики:",
-            parse_mode="Markdown",
-            reply_markup=_analytics_buy_keyboard("supplier"),
+            "🏭 *Поиск поставщиков* — 199₽\n\nКупи кредиты аналитики:",
+            parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("supplier"),
         )
         return
-
-    msg = await update.message.reply_text("🏭 Ищу поставщиков «{}»…".format(product))
+    # Suppliers always from Chinese platforms — no marketplace choice
+    msg = await update.message.reply_text("🏭 Ищу поставщиков «{}» на 1688/Alibaba…".format(product))
     try:
         await userdb.use_analytics_credit(uid, 1)
         supplier_data = await parsers.search_1688(product, product)
@@ -2147,47 +2180,64 @@ async def cmd_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not query:
         await update.message.reply_text(
             "📦 *Полный анализ*\n\nИспользование: `/full кокосовое масло`\n\n"
-            "Включает: анализ ниши + сезонность + поставщики (3 кредита).",
+            "Ниша + сезонность + поставщики (3 кредита).",
             parse_mode="Markdown",
         )
         return
-
     if not await _check_analytics_credit(uid, 3):
         bal = await userdb.get_analytics_balance(uid)
         await update.message.reply_text(
-            f"📦 *Полный анализ* — 399₽\n\n"
-            f"Нужно 3 кредита, у тебя: {bal}. Купи полный анализ:",
-            parse_mode="Markdown",
-            reply_markup=_analytics_buy_keyboard("full"),
+            f"📦 *Полный анализ* — 399₽\n\nНужно 3 кредита, у тебя: {bal}.",
+            parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("full"),
         )
         return
+    await update.message.reply_text(
+        f"📦 *Полный анализ:* «{query}»\n\nКакую площадку анализировать?",
+        parse_mode="Markdown", reply_markup=_marketplace_keyboard("full", query),
+    )
 
-    msg = await update.message.reply_text("📦 Запускаю полный анализ «{}»… (~30 сек)".format(query))
+
+async def _run_nicha(uid: int, query: str, marketplace: str, reply_fn):
+    """Run niche analysis for chosen marketplace and send result."""
+    mkt_label = {"wb": "Wildberries", "ozon": "OZON", "amazon": "Amazon", "all": "WB + OZON + Amazon"}
+    msg = await reply_fn(f"🔍 Анализирую нишу «{query}» на {mkt_label.get(marketplace, marketplace)}…")
     try:
-        await userdb.use_analytics_credit(uid, 3)
-
-        # Run all three analyses
-        wb_data = await parsers.search_wb(query)
-        ozon_data = await parsers.search_ozon(query)
-        supplier_data = await parsers.search_1688(query, query)
-
-        raw_niche = await analyze_niche(client, query, wb_data, ozon_data)
-        raw_season = await analyze_season(client, query)
-        supplier_result = await analyze_suppliers(client, query, supplier_data)
-        raw_supplier = supplier_result[0] if isinstance(supplier_result, tuple) else supplier_result
-
-        text_niche = format_niche(query, raw_niche)
-        text_season = format_season(query, raw_season)
-        text_supplier = format_suppliers(query, raw_supplier)
-
-        await userdb.log_analysis(uid, query, "full", raw_niche)
-
-        await msg.edit_text(text_niche, parse_mode="Markdown")
-        await update.message.reply_text(text_season, parse_mode="Markdown")
-        await update.message.reply_text(text_supplier, parse_mode="Markdown", disable_web_page_preview=True)
+        await userdb.use_analytics_credit(uid, 1)
+        wb_data = await parsers.search_wb(query) if marketplace in ("wb", "all") else []
+        ozon_data = await parsers.search_ozon(query) if marketplace in ("ozon", "all") else []
+        raw = await analyze_niche(client, query, wb_data, ozon_data, marketplace)
+        text = format_niche(query, raw)
+        await userdb.log_analysis(uid, query, f"nicha_{marketplace}", raw)
+        await msg.edit_text(text, parse_mode="Markdown")
     except Exception as e:
         logging.exception(e)
         await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+
+
+async def _run_full(uid: int, query: str, marketplace: str, update: Update):
+    """Run full analysis (nicha + season + supplier) for chosen marketplace."""
+    mkt_label = {"wb": "Wildberries", "ozon": "OZON", "amazon": "Amazon", "all": "WB + OZON + Amazon"}
+    msg = await update.message.reply_text(
+        f"📦 Запускаю полный анализ «{query}» на {mkt_label.get(marketplace, marketplace)}… (~40 сек)"
+    )
+    try:
+        await userdb.use_analytics_credit(uid, 3)
+        wb_data = await parsers.search_wb(query) if marketplace in ("wb", "all") else []
+        ozon_data = await parsers.search_ozon(query) if marketplace in ("ozon", "all") else []
+        supplier_data = await parsers.search_1688(query, query)
+        raw_niche = await analyze_niche(client, query, wb_data, ozon_data, marketplace)
+        raw_season = await analyze_season(client, query, marketplace)
+        supplier_result = await analyze_suppliers(client, query, supplier_data)
+        raw_supplier = supplier_result[0] if isinstance(supplier_result, tuple) else supplier_result
+        await userdb.log_analysis(uid, query, f"full_{marketplace}", raw_niche)
+        await msg.edit_text(format_niche(query, raw_niche), parse_mode="Markdown")
+        await update.message.reply_text(format_season(query, raw_season), parse_mode="Markdown")
+        await update.message.reply_text(format_suppliers(query, raw_supplier), parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception as e:
+        logging.exception(e)
+        await msg.edit_text("❌ Ошибка анализа. Попробуй позже.")
+
+
 
 
 async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
