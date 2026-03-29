@@ -80,6 +80,7 @@ PROMO_CODES: dict[str, dict] = {
     "TOP777":   {"credits": 3,  "used_by": set()},   # для рассылки при сбоях
     "ТОП777":   {"credits": 3,  "used_by": set()},   # для рассылки при сбоях (кириллица)
     "WELCOME3": {"credits": 3,  "used_by": set()},   # приветственный
+    "SELLER2026": {"credits": 3, "used_by": set()},  # email-рассылка для лидогенерации
 }
 
 # Реквизиты для ручной оплаты переводом
@@ -129,26 +130,32 @@ PLANS = {
     "analytics_nicha": {
         "name": "Анализ ниши", "emoji": "🔍",
         "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
-        "price_rub": 499, "price_usdt": 5.5, "price_ton": 55,
+        "price_rub": 149, "price_usdt": 1.7, "price_ton": 17,
         "description": "1 анализ ниши",
     },
     "analytics_season": {
         "name": "Анализ товаров + сезонность", "emoji": "📅",
         "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
-        "price_rub": 999, "price_usdt": 11, "price_ton": 110,
+        "price_rub": 149, "price_usdt": 1.7, "price_ton": 17,
         "description": "Анализ товаров + сезонность",
     },
     "analytics_supplier": {
         "name": "Поставщики", "emoji": "🏭",
         "credits": 0, "seo_credits": 0, "analytics_credits": 1, "duration_days": None,
-        "price_rub": 1333, "price_usdt": 15, "price_ton": 150,
+        "price_rub": 199, "price_usdt": 2.2, "price_ton": 22,
         "description": "Поиск поставщиков (1688, Alibaba)",
     },
     "analytics_full": {
         "name": "Полный анализ", "emoji": "📦",
         "credits": 0, "seo_credits": 0, "analytics_credits": 3, "duration_days": None,
-        "price_rub": 2499, "price_usdt": 28, "price_ton": 280,
-        "description": "Ниша + сезонность + поставщики (экономия 332₽)",
+        "price_rub": 399, "price_usdt": 4.5, "price_ton": 45,
+        "description": "Ниша + сезонность + поставщики (экономия ~30%)",
+    },
+    "analytics_bundle_10": {
+        "name": "Пакет 10 полных анализов", "emoji": "📊",
+        "credits": 0, "seo_credits": 0, "analytics_credits": 30, "duration_days": None,
+        "price_rub": 2490, "price_usdt": 28, "price_ton": 280,
+        "description": "10 полных анализов (~250₽/шт) — для серьёзных селлеров",
     },
 }
 
@@ -1795,24 +1802,25 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if d == "buy_section_analytics":
         await q.message.edit_text(
             "📊 *Аналитика для маркетплейсов*\n\n"
-            "🔍 *Анализ ниши* — 499 ₽\n"
+            "🔍 *Анализ ниши* — 149 ₽\n"
             "Конкуренция, цены, топ-продавцы на WB/OZON. "
             "Узнай насколько перегрета ниша перед входом.\n\n"
-            "📅 *Анализ товаров + сезонность* — 999 ₽\n"
+            "📅 *Анализ товаров + сезонность* — 149 ₽\n"
             "Лучшее время входа на рынок, пики и спады продаж по месяцам, "
             "прогноз спроса. Не зайди в несезон.\n\n"
-            "🏭 *Поставщики* — 1 333 ₽\n"
-            "Поиск поставщиков на 1688 и Alibaba: цены, маржа, условия. "
-            "Только этот отчёт.\n\n"
-            "📦 *Полный анализ* — 2 499 ₽ _(экономия 332₽)_\n"
-            "Включает ВСЕ ТРИ отчёта: ниша + сезонность + поставщики. "
-            "Полная картина перед запуском товара.",
+            "🏭 *Поставщики* — 199 ₽\n"
+            "Поиск поставщиков на 1688 и Alibaba: цены, маржа, условия.\n\n"
+            "📦 *Полный анализ* — 399 ₽ _(скидка ~30%)_\n"
+            "ВСЕ ТРИ отчёта: ниша + сезонность + поставщики.\n\n"
+            "📊 *Пакет 10 полных анализов* — 2 490 ₽ _(~250₽/шт)_\n"
+            "Для серьёзных селлеров — максимальная выгода.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔍 Анализ ниши — 499 ₽",            callback_data="plan_analytics_nicha")],
-                [InlineKeyboardButton("📅 Сезонность — 999 ₽",             callback_data="plan_analytics_season")],
-                [InlineKeyboardButton("🏭 Поставщики — 1 333 ₽",           callback_data="plan_analytics_supplier")],
-                [InlineKeyboardButton("📦 Полный анализ — 2 499 ₽",        callback_data="plan_analytics_full")],
+                [InlineKeyboardButton("🔍 Анализ ниши — 149 ₽",            callback_data="plan_analytics_nicha")],
+                [InlineKeyboardButton("📅 Сезонность — 149 ₽",             callback_data="plan_analytics_season")],
+                [InlineKeyboardButton("🏭 Поставщики — 199 ₽",             callback_data="plan_analytics_supplier")],
+                [InlineKeyboardButton("📦 Полный анализ — 399 ₽",          callback_data="plan_analytics_full")],
+                [InlineKeyboardButton("📊 Пакет ×10 — 2 490 ₽",           callback_data="plan_analytics_bundle_10")],
                 [InlineKeyboardButton("← Назад", callback_data="buy_main")],
             ]),
         )
@@ -2304,7 +2312,7 @@ async def cmd_nicha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            "🔍 *Анализ ниши* — 499₽\n\nКупи кредиты аналитики:",
+            "🔍 *Анализ ниши* — 149₽\n\nКупи кредиты аналитики:",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("nicha"),
         )
         return
@@ -2325,7 +2333,7 @@ async def cmd_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            "📅 *Анализ сезонности* — 999₽\n\nКупи кредиты аналитики:",
+            "📅 *Анализ сезонности* — 149₽\n\nКупи кредиты аналитики:",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("season"),
         )
         return
@@ -2347,7 +2355,7 @@ async def cmd_supplier(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not await _check_analytics_credit(uid, 1):
         await update.message.reply_text(
-            "🏭 *Поиск поставщиков* — 1 333₽\n\nКупи кредиты аналитики:",
+            "🏭 *Поиск поставщиков* — 199₽\n\nКупи кредиты аналитики:",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("supplier"),
         )
         return
@@ -2379,7 +2387,7 @@ async def cmd_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _check_analytics_credit(uid, 3):
         bal = await userdb.get_analytics_balance(uid)
         await update.message.reply_text(
-            f"📦 *Полный анализ* — 2 499₽\n\nНужно 3 кредита, у тебя: {bal}.",
+            f"📦 *Полный анализ* — 399₽\n\nНужно 3 кредита, у тебя: {bal}.",
             parse_mode="Markdown", reply_markup=_analytics_buy_keyboard("full"),
         )
         return
