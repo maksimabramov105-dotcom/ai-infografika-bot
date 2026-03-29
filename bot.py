@@ -9,7 +9,12 @@ import asyncio
 import hmac
 import hashlib
 import httpx
-import aiohttp.web
+try:
+    import aiohttp.web
+    _AIOHTTP = True
+except ImportError:
+    _AIOHTTP = False
+    logging.warning("aiohttp not installed — REST API disabled")
 from urllib.parse import parse_qsl
 from datetime import datetime, timedelta, timezone
 
@@ -1254,9 +1259,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         method_label = "РФ карта" if method == "ru_card" else "Visa Revolut"
         photo        = update.message.photo[-1]
 
-        # Суммы > 500₽ (или > $5.5) — только ручное подтверждение
+        # Суммы > 1500₽ — только ручное подтверждение; ≤1500₽ — авто
         amount_rub = p["price_rub"] if method == "ru_card" else int(p["price_usdt"] * 90)
-        needs_manual = amount_rub > 500
+        needs_manual = amount_rub > 1500
 
         if not OWNER_ID:
             logging.error("OWNER_ID not set — cannot process transfer!")
@@ -1274,7 +1279,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👤 {full_name} (@{user_obj.username or 'без username'}, ID: {uid})\n"
                 f"💰 {expected_amount} {currency} — {method_label}\n"
                 f"📦 Тариф: {p['name']}\n\n"
-                f"Сумма > 500₽ — подтверди вручную."
+                f"Сумма > 1500₽ — подтверди вручную."
             )
             try:
                 await context.bot.send_photo(
@@ -1301,7 +1306,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👤 {full_name} (@{user_obj.username or 'без username'}, ID: {uid})\n"
                 f"💰 {expected_amount} {currency} — {method_label}\n"
                 f"📦 Тариф: {p['name']}\n\n"
-                f"Баланс пополнен. Нажми ↩️ если скриншот поддельный."
+                f"Авто ≤1500₽. Нажми ↩️ если скриншот поддельный."
             )
             try:
                 await context.bot.send_photo(
@@ -2663,40 +2668,42 @@ def _build_app():
     return app
 
 
-def main():
+async def _async_main():
     global _bot_app_ref
-    asyncio.get_event_loop().run_until_complete(userdb.init_db())
+    await userdb.init_db()
     download_fonts()
     app = _build_app()
     _bot_app_ref = app
 
-    if WH_URL:
-        # Railway: webhook + aiohttp REST on same PORT
-        async def run_webhook():
-            await app.initialize()
-            await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
-            await app.start()
-            web = aiohttp.web.Application()
-            web.router.add_get("/api/user/{user_id}", api_get_user)
-            web.router.add_get("/api/history/{user_id}", api_get_history)
-            web.router.add_get("/api/stats/public", api_get_stats)
-            web.router.add_post("/api/validate_user", api_validate)
-            web.router.add_post("/api/buy", api_buy)
-            web.router.add_post(f"/{TELEGRAM_BOT_TOKEN}", handle_webhook)
-            web.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
-            runner = aiohttp.web.AppRunner(web)
-            await runner.setup()
-            await aiohttp.web.TCPSite(runner, "0.0.0.0", PORT).start()
-            logging.info(f"Bot running via webhook on port {PORT}")
-            await asyncio.Event().wait()
-
-        asyncio.run(run_webhook())
+    if WH_URL and _AIOHTTP:
+        # Railway webhook + REST API mode
+        await app.initialize()
+        await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
+        await app.start()
+        web = aiohttp.web.Application()
+        web.router.add_get("/api/user/{user_id}", api_get_user)
+        web.router.add_get("/api/history/{user_id}", api_get_history)
+        web.router.add_get("/api/stats/public", api_get_stats)
+        web.router.add_post("/api/validate_user", api_validate)
+        web.router.add_post("/api/buy", api_buy)
+        web.router.add_post(f"/{TELEGRAM_BOT_TOKEN}", handle_webhook)
+        web.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
+        runner = aiohttp.web.AppRunner(web)
+        await runner.setup()
+        await aiohttp.web.TCPSite(runner, "0.0.0.0", PORT).start()
+        logging.info(f"Webhook+REST running on port {PORT}")
+        await asyncio.Event().wait()
     else:
+        # Polling mode (local dev + Railway without WEBHOOK_URL)
         logging.info("Bot started (polling mode).")
-        app.run_polling(
+        await app.run_polling(
             drop_pending_updates=True,
             allowed_updates=["message", "callback_query", "pre_checkout_query"],
         )
+
+
+def main():
+    asyncio.run(_async_main())
 
 
 if __name__ == "__main__":
