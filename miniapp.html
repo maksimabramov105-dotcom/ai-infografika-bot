@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TOP SELLER</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #1C1C1E;
+    --card: #2C2C2E;
+    --accent: #FF6B35;
+    --accent2: #FF8C42;
+    --text: #FFFFFF;
+    --muted: rgba(235,235,245,0.6);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'SF Pro Display', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .screen { display: none; padding: 16px; }
+  .screen.active { display: block; }
+
+  /* NAV */
+  .nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #1C1C1E;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    z-index: 100;
+  }
+  .nav-btn {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; gap: 3px;
+    background: none; border: none; color: var(--muted);
+    font-size: 10px; cursor: pointer; padding: 4px 0;
+    transition: color .2s;
+  }
+  .nav-btn.active { color: var(--accent); }
+  .nav-btn span { font-size: 22px; }
+
+  /* CARDS */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .card-title { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .card-value { font-size: 28px; font-weight: 700; }
+  .card-row { display: flex; gap: 12px; }
+  .card-row .card { flex: 1; }
+
+  /* BALANCE CARD */
+  .balance-card {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .balance-card .label { font-size: 13px; opacity: .8; margin-bottom: 2px; }
+  .balance-card .val { font-size: 32px; font-weight: 800; }
+  .balance-card .sub { font-size: 13px; opacity: .8; margin-top: 4px; }
+
+  /* GRID */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .tile {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 16px 12px;
+    text-align: center;
+    cursor: pointer;
+    border: none; color: var(--text);
+    transition: transform .1s;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .tile:active { transform: scale(.97); }
+  .tile-icon { font-size: 28px; }
+  .tile-label { font-size: 13px; font-weight: 600; }
+  .tile-price { font-size: 12px; color: var(--muted); }
+
+  /* BUTTONS */
+  .btn {
+    width: 100%; padding: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; border: none; border-radius: var(--radius);
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    margin-bottom: 10px;
+    transition: opacity .2s;
+  }
+  .btn:active { opacity: .85; }
+  .btn.secondary {
+    background: var(--card);
+    color: var(--accent);
+  }
+
+  /* SECTION TITLE */
+  h2 { font-size: 22px; font-weight: 800; margin-bottom: 16px; }
+  h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+
+  /* PRODUCT CARDS */
+  .product-card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 10px;
+    position: relative;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .2s;
+  }
+  .product-card:active { border-color: var(--accent); }
+  .product-card .badge {
+    position: absolute; top: 12px; right: 12px;
+    background: var(--accent);
+    color: #fff; font-size: 11px; font-weight: 700;
+    padding: 3px 8px; border-radius: 20px;
+  }
+  .product-card .p-title { font-size: 16px; font-weight: 700; }
+  .product-card .p-desc { font-size: 13px; color: var(--muted); margin: 4px 0 10px; }
+  .product-card .p-price { font-size: 20px; font-weight: 800; color: var(--accent); }
+  .product-card .p-price span { font-size: 13px; color: var(--muted); font-weight: 400; }
+
+  /* REF */
+  .ref-link-box {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 13px;
+    word-break: break-all;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); font-size: 14px; }
+  .stat-val { font-size: 16px; font-weight: 700; }
+
+  /* HISTORY */
+  .tx-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .tx-row:last-child { border-bottom: none; }
+  .tx-icon { font-size: 24px; width: 40px; text-align: center; }
+  .tx-info { flex: 1; }
+  .tx-name { font-size: 14px; font-weight: 600; }
+  .tx-date { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tx-amount { font-size: 14px; font-weight: 700; color: var(--accent); }
+
+  /* GREETING */
+  .greeting { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+  .greeting-sub { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+
+  /* SPINNER */
+  .spinner { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- SCREEN: MAIN -->
+<div id="screen-main" class="screen active">
+  <div class="greeting" id="greeting">Привет! 👋</div>
+  <div class="greeting-sub">TOP SELLER — всё для маркетплейсов</div>
+
+  <div class="balance-card">
+    <div class="label">Инфографик</div>
+    <div class="val" id="credits-inf">—</div>
+    <div class="sub" id="credits-an">Аналитик: —</div>
+  </div>
+
+  <div class="grid2">
+    <button class="tile" onclick="sendToBot('/generate')">
+      <span class="tile-icon">📸</span>
+      <div class="tile-label">Инфографика</div>
+      <div class="tile-price">от 60₽</div>
+    </button>
+    <button class="tile" onclick="sendToBot('/nicha')">
+      <span class="tile-icon">🔍</span>
+      <div class="tile-label">Анализ ниши</div>
+      <div class="tile-price">149₽</div>
+    </button>
+    <button class="tile" onclick="sendToBot('/supplier')">
+      <span class="tile-icon">🏭</span>
+      <div class="tile-label">Поставщики</div>
+      <div class="tile-price">199₽</div>
+    </button>
+    <button class="tile" onclick="sendToBot('/season')">
+      <span class="tile-icon">📅</span>
+      <div class="tile-label">Сезонность</div>
+      <div class="tile-price">149₽</div>
+    </button>
+  </div>
+
+  <button class="btn" onclick="showScreen('buy')">🚀 Полный анализ — 399₽</button>
+
+  <div class="card">
+    <div class="card-title">Реферальная программа</div>
+    <div class="stat-row">
+      <span class="stat-label">Приглашено</span>
+      <span class="stat-val" id="ref-count-main">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Заработано Stars</span>
+      <span class="stat-val" id="ref-earned-main">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: BUY -->
+<div id="screen-buy" class="screen">
+  <h2>🛒 Купить</h2>
+  <div id="products-list"><div class="spinner">Загрузка…</div></div>
+</div>
+
+<!-- SCREEN: REF -->
+<div id="screen-ref" class="screen">
+  <h2>👥 Рефералы</h2>
+  <div class="card">
+    <div class="stat-row">
+      <span class="stat-label">💰 Комиссия</span>
+      <span class="stat-val">30% / 12 мес</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Приглашено</span>
+      <span class="stat-val" id="ref-count">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Заработано</span>
+      <span class="stat-val" id="ref-earned">— ⭐</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">К выводу</span>
+      <span class="stat-val" id="ref-withdraw">— ⭐</span>
+    </div>
+  </div>
+
+  <h3>Твоя ссылка</h3>
+  <div class="ref-link-box" id="ref-link">Загрузка…</div>
+  <button class="btn" onclick="copyRef()">📋 Скопировать ссылку</button>
+  <button class="btn secondary" onclick="shareRef()">📤 Поделиться</button>
+  <button class="btn secondary" onclick="sendToBot('/withdraw')">💸 Запросить вывод</button>
+</div>
+
+<!-- SCREEN: HISTORY -->
+<div id="screen-history" class="screen">
+  <h2>📋 История</h2>
+  <div id="history-list"><div class="spinner">Загрузка…</div></div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="nav">
+  <button class="nav-btn active" id="nav-main" onclick="showScreen('main')">
+    <span>🏠</span>Главная
+  </button>
+  <button class="nav-btn" id="nav-buy" onclick="showScreen('buy')">
+    <span>🛒</span>Купить
+  </button>
+  <button class="nav-btn" id="nav-ref" onclick="showScreen('ref')">
+    <span>👥</span>Рефералы
+  </button>
+  <button class="nav-btn" id="nav-history" onclick="showScreen('history')">
+    <span>📋</span>История
+  </button>
+</nav>
+
+<script>
+const tg   = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+const user     = tg.initDataUnsafe?.user || {};
+const initData = tg.initData || '';
+const API      = 'https://ai-infografika-bot-production.up.railway.app';
+
+// Apply Telegram theme colors
+if (tg.themeParams?.bg_color) {
+  document.documentElement.style.setProperty('--bg', tg.themeParams.bg_color);
+}
+
+// ── Navigation ──
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'buy') renderProducts();
+  if (name === 'history') loadHistory();
+  if (name === 'ref') renderRef();
+}
+
+// ── Load user data ──
+async function loadUser() {
+  if (!user.id) return;
+  try {
+    const r = await fetch(`${API}/api/user/${user.id}`);
+    const d = await r.json();
+    document.getElementById('greeting').textContent = `Привет, ${user.first_name || 'Селлер'}! 👋`;
+    document.getElementById('credits-inf').textContent = d.credits_infographic ?? '0';
+    document.getElementById('credits-an').textContent  = `Аналитик: ${d.credits_analysis ?? 0}`;
+    document.getElementById('ref-count-main').textContent  = d.referral_count ?? 0;
+    document.getElementById('ref-earned-main').textContent = `${d.referral_earned ?? 0} ⭐`;
+    // ref screen
+    document.getElementById('ref-count').textContent    = d.referral_count ?? 0;
+    document.getElementById('ref-earned').textContent   = `${d.referral_earned ?? 0} ⭐`;
+    document.getElementById('ref-withdraw').textContent = `${d.referral_withdrawable ?? 0} ⭐`;
+  } catch(e) { console.error('loadUser', e); }
+}
+
+// ── Products ──
+const PRODUCTS = [
+  { id: 'infographic_10', title: '10 инфографик',          desc: '10 карточек для WB/OZON',           stars: 250, popular: false },
+  { id: 'infographic_30', title: '30 инфографик + аналитика', desc: '30 карточек + 999 анализов',      stars: 500, popular: true  },
+  { id: 'analysis_pack',  title: 'Пакет аналитики ×10',    desc: '10 полных анализов',                stars: 400, popular: false },
+  { id: 'all_in_one',     title: 'Всё включено',           desc: '30 инфографик + 20 анализов/мес',  stars: 750, popular: false },
+];
+
+function renderProducts() {
+  const el = document.getElementById('products-list');
+  el.innerHTML = PRODUCTS.map(p => `
+    <div class="product-card" onclick="buyProduct('${p.id}')">
+      ${p.popular ? '<div class="badge">ПОПУЛЯРНЫЙ</div>' : ''}
+      <div class="p-title">${p.title}</div>
+      <div class="p-desc">${p.desc}</div>
+      <div class="p-price">⭐ ${p.stars} <span>Telegram Stars</span></div>
+    </div>
+  `).join('');
+}
+
+async function buyProduct(productId) {
+  tg.showPopup({ title: 'Покупка', message: 'Инвойс появится в чате с ботом', buttons: [{ type: 'ok' }] });
+  try {
+    await fetch(`${API}/api/buy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.id, product_id: productId, init_data: initData }),
+    });
+    tg.close();
+  } catch(e) { console.error('buyProduct', e); }
+}
+
+// ── History ──
+const TYPE_ICONS = { purchase: '💳', analysis: '🔍', generation: '📸' };
+const TYPE_NAMES = { purchase: 'Покупка', analysis: 'Анализ', generation: 'Генерация' };
+
+async function loadHistory() {
+  if (!user.id) return;
+  const el = document.getElementById('history-list');
+  try {
+    const r = await fetch(`${API}/api/history/${user.id}`);
+    const d = await r.json();
+    if (!d.history?.length) { el.innerHTML = '<div class="spinner">Операций пока нет</div>'; return; }
+    el.innerHTML = d.history.map(tx => `
+      <div class="tx-row">
+        <div class="tx-icon">${TYPE_ICONS[tx.type] || '📄'}</div>
+        <div class="tx-info">
+          <div class="tx-name">${tx.query || TYPE_NAMES[tx.type] || tx.product}</div>
+          <div class="tx-date">${tx.date ? tx.date.slice(0,16).replace('T',' ') : ''}</div>
+        </div>
+        ${tx.stars ? `<div class="tx-amount">⭐ ${tx.stars}</div>` : ''}
+      </div>
+    `).join('');
+  } catch(e) { el.innerHTML = '<div class="spinner">Ошибка загрузки</div>'; }
+}
+
+// ── Referrals ──
+function renderRef() {
+  const link = `https://t.me/topbestseller_bot?start=REF_${user.id}`;
+  document.getElementById('ref-link').textContent = link;
+}
+
+function copyRef() {
+  const link = `https://t.me/topbestseller_bot?start=REF_${user.id}`;
+  navigator.clipboard?.writeText(link).then(() => {
+    tg.showPopup({ message: 'Ссылка скопирована!', buttons: [{ type: 'ok' }] });
+  }).catch(() => {
+    tg.showAlert('Ссылка: ' + link);
+  });
+}
+
+function shareRef() {
+  const link = `https://t.me/topbestseller_bot?start=REF_${user.id}`;
+  const text = '🤖 Генерация инфографик для WB/OZON за 10 секунд!';
+  tg.openTelegramLink(
+    `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`
+  );
+}
+
+function sendToBot(cmd) {
+  tg.close();
+  // User will type the command in chat after Mini App closes
+}
+
+window.onload = () => {
+  loadUser();
+  renderProducts();
+  renderRef();
+};
+</script>
+</body>
+</html>

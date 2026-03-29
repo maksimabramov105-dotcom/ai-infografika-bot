@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "TOP SELLER Bot (polling)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["bot.py"],
+      "port": 8080
+    }
+  ]
+}

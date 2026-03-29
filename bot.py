@@ -6,7 +6,11 @@ import logging
 import random
 import urllib.request
 import asyncio
+import hmac
+import hashlib
 import httpx
+import aiohttp.web
+from urllib.parse import parse_qsl
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -37,6 +41,9 @@ CRYPTO_BOT_TOKEN   = os.getenv("CRYPTO_BOT_TOKEN", "")
 CRYPTO_BOT_API     = "https://pay.crypt.bot/api"
 OWNER_ID           = int(os.getenv("OWNER_ID", "0"))
 ADMIN_ID           = int(os.getenv("ADMIN_ID", str(os.getenv("OWNER_ID", "0"))))
+PORT               = int(os.getenv("PORT", "8080"))
+MINI_APP_URL       = os.getenv("MINI_APP_URL", "https://topbestseller.vercel.app")
+WH_URL             = os.getenv("WEBHOOK_URL", "")  # set on Railway for webhook mode
 
 # ── TELEGRAM STARS PRODUCTS ───────────────────────────────────────────────────────
 PRODUCTS = {
@@ -2491,49 +2498,205 @@ async def setup_bot(app):
         logging.warning(f"Could not set bot info: {e}")
 
 
+# ── MINI APP COMMAND ─────────────────────────────────────────────────────────────
+from telegram import WebAppInfo
+
+async def cmd_app(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👇 Нажми чтобы открыть панель управления:",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🚀 Открыть панель управления", web_app=WebAppInfo(url=MINI_APP_URL))
+        ]]),
+    )
+
+
+# ── REST API ──────────────────────────────────────────────────────────────────────
+_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Content-Type": "application/json",
+}
+
+
+def _json(data: dict, status: int = 200) -> aiohttp.web.Response:
+    return aiohttp.web.Response(text=json.dumps(data, ensure_ascii=False), status=status, headers=_CORS)
+
+
+def validate_telegram_init_data(init_data: str) -> dict | None:
+    parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+    hash_value = parsed.pop("hash", None)
+    if not hash_value:
+        return None
+    data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+    secret = hmac.new(b"WebAppData", TELEGRAM_BOT_TOKEN.encode(), hashlib.sha256).digest()
+    expected = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
+    if hmac.compare_digest(expected, hash_value):
+        try:
+            return json.loads(parsed.get("user", "{}"))
+        except Exception:
+            return {}
+    return None
+
+
+async def api_get_user(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    uid = int(request.match_info["user_id"])
+    u = get_user(uid)
+    analytics = await userdb.get_analytics_balance(uid)
+    total_ref = await userdb.get_total_referral_reward(uid)
+    withdrawable = await userdb.get_withdrawable_stars(uid)
+    # count referrals
+    import aiosqlite
+    async with aiosqlite.connect(userdb.DB_PATH) as db:
+        cur = await db.execute("SELECT COUNT(*) FROM referral_rewards WHERE referrer_id=?", (uid,))
+        row = await cur.fetchone()
+        ref_count = row[0] if row else 0
+    return _json({
+        "credits_infographic": u.get("credits", 0),
+        "credits_analysis": analytics,
+        "referral_count": ref_count,
+        "referral_earned": total_ref,
+        "referral_withdrawable": withdrawable,
+        "unlimited_until": u.get("unlimited_until"),
+    })
+
+
+async def api_get_history(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    uid = int(request.match_info["user_id"])
+    rows = []
+    import aiosqlite
+    async with aiosqlite.connect(userdb.DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT product_id, stars, created_at FROM stars_transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 10",
+            (uid,),
+        )
+        async for r in cur:
+            rows.append({"type": "purchase", "product": r[0], "stars": r[1], "date": r[2]})
+        cur2 = await db.execute(
+            "SELECT query, analysis_type, created_at FROM analysis_log WHERE user_id=? ORDER BY created_at DESC LIMIT 10",
+            (uid,),
+        )
+        async for r in cur2:
+            rows.append({"type": "analysis", "product": r[1], "query": r[0], "stars": 0, "date": r[2]})
+    rows.sort(key=lambda x: x["date"], reverse=True)
+    return _json({"history": rows[:10]})
+
+
+async def api_get_stats(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    stats = await userdb.get_admin_stats()
+    return _json({
+        "total_users": stats.get("total_users", 0),
+        "infographics_today": stats.get("paid_today", 0),
+    })
+
+
+async def api_validate(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    body = await request.json()
+    user = validate_telegram_init_data(body.get("init_data", ""))
+    if user is None:
+        return _json({"ok": False, "error": "invalid"}, status=401)
+    return _json({"ok": True, "user": user})
+
+
+async def api_buy(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    body = await request.json()
+    uid = body.get("user_id")
+    product_id = body.get("product_id")
+    if not uid or product_id not in PRODUCTS:
+        return _json({"ok": False, "error": "bad_request"}, status=400)
+    product = PRODUCTS[product_id]
+    try:
+        await _bot_app_ref.bot.send_invoice(
+            chat_id=uid,
+            title=product["title"],
+            description=product["description"],
+            payload=f"{product_id}:{uid}",
+            currency="XTR",
+            prices=[LabeledPrice(product["title"], product["stars"])],
+        )
+        return _json({"ok": True})
+    except Exception as e:
+        return _json({"ok": False, "error": str(e)}, status=500)
+
+
+async def handle_options(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    return aiohttp.web.Response(status=204, headers=_CORS)
+
+
+async def handle_webhook(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    data = await request.json()
+    update = Update.de_json(data, _bot_app_ref.bot)
+    await _bot_app_ref.process_update(update)
+    return aiohttp.web.Response(status=200)
+
+
+# global ref set in main()
+_bot_app_ref = None
+
+
 # ── MAIN ──────────────────────────────────────────────────────────────────────────
-def main():
-    import asyncio
-    asyncio.get_event_loop().run_until_complete(userdb.init_db())
-    download_fonts()
+def _build_app():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(setup_bot).build()
-    app.add_handler(CommandHandler("start",     cmd_start))
-    app.add_handler(CommandHandler("buy",       cmd_buy))
-    app.add_handler(CommandHandler("credits",   cmd_credits))
-    app.add_handler(CommandHandler("promo",     cmd_promo))
-    app.add_handler(CommandHandler("addpromo",  cmd_admin_promo))
-    app.add_handler(CommandHandler("broadcast", cmd_broadcast))
-    app.add_handler(CommandHandler("stop",      cmd_stop))
-    app.add_handler(CommandHandler("confirm",   cmd_confirm))
-    app.add_handler(CommandHandler("reject",    cmd_reject))
-    app.add_handler(CommandHandler("pending",   cmd_pending))
-    app.add_handler(CommandHandler("reply",     cmd_reply))
-    app.add_handler(CommandHandler("nicha",     cmd_nicha))
-    app.add_handler(CommandHandler("season",    cmd_season))
-    app.add_handler(CommandHandler("supplier",  cmd_supplier))
-    app.add_handler(CommandHandler("full",      cmd_full))
-    app.add_handler(CommandHandler("balance",   cmd_balance))
-    app.add_handler(CommandHandler("ref",       cmd_ref))
-    app.add_handler(CommandHandler("withdraw",  cmd_withdraw))
-    app.add_handler(CommandHandler("stats",     cmd_stats))
+    for cmd, handler in [
+        ("start", cmd_start), ("buy", cmd_buy), ("credits", cmd_credits),
+        ("promo", cmd_promo), ("addpromo", cmd_admin_promo), ("broadcast", cmd_broadcast),
+        ("stop", cmd_stop), ("confirm", cmd_confirm), ("reject", cmd_reject),
+        ("pending", cmd_pending), ("reply", cmd_reply), ("nicha", cmd_nicha),
+        ("season", cmd_season), ("supplier", cmd_supplier), ("full", cmd_full),
+        ("balance", cmd_balance), ("ref", cmd_ref), ("withdraw", cmd_withdraw),
+        ("stats", cmd_stats), ("app", cmd_app),
+    ]:
+        app.add_handler(CommandHandler(cmd, handler))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
 
-    async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
+    async def error_handler(update, context):
         if isinstance(context.error, Conflict):
-            logging.warning("409 Conflict on startup — old instance still shutting down, retrying...")
+            logging.warning("409 Conflict — old instance shutting down")
             return
         logging.exception(context.error)
 
     app.add_error_handler(error_handler)
-    logging.info("Bot started.")
-    app.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=["message", "callback_query", "pre_checkout_query"],
-    )
+    return app
+
+
+def main():
+    global _bot_app_ref
+    asyncio.get_event_loop().run_until_complete(userdb.init_db())
+    download_fonts()
+    app = _build_app()
+    _bot_app_ref = app
+
+    if WH_URL:
+        # Railway: webhook + aiohttp REST on same PORT
+        async def run_webhook():
+            await app.initialize()
+            await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
+            await app.start()
+            web = aiohttp.web.Application()
+            web.router.add_get("/api/user/{user_id}", api_get_user)
+            web.router.add_get("/api/history/{user_id}", api_get_history)
+            web.router.add_get("/api/stats/public", api_get_stats)
+            web.router.add_post("/api/validate_user", api_validate)
+            web.router.add_post("/api/buy", api_buy)
+            web.router.add_post(f"/{TELEGRAM_BOT_TOKEN}", handle_webhook)
+            web.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
+            runner = aiohttp.web.AppRunner(web)
+            await runner.setup()
+            await aiohttp.web.TCPSite(runner, "0.0.0.0", PORT).start()
+            logging.info(f"Bot running via webhook on port {PORT}")
+            await asyncio.Event().wait()
+
+        asyncio.run(run_webhook())
+    else:
+        logging.info("Bot started (polling mode).")
+        app.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query", "pre_checkout_query"],
+        )
 
 
 if __name__ == "__main__":
