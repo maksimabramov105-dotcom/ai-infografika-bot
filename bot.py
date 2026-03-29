@@ -2675,31 +2675,44 @@ async def _async_main():
     app = _build_app()
     _bot_app_ref = app
 
+    # Always start aiohttp so Railway health checks pass on port PORT.
+    # Webhook endpoint is added when WH_URL is set; otherwise bot uses polling.
+    await app.initialize()
+
     if WH_URL and _AIOHTTP:
-        # Railway webhook + REST API mode
-        await app.initialize()
         await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
         await app.start()
+        logging.info("Webhook mode active.")
+    else:
+        await app.bot.delete_webhook()
+        await app.start()
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query", "pre_checkout_query"],
+        )
+        logging.info("Polling mode active.")
+
+    if _AIOHTTP:
         web = aiohttp.web.Application()
+
+        async def health(_): return aiohttp.web.Response(text="ok")
+        web.router.add_get("/", health)
+        web.router.add_get("/health", health)
         web.router.add_get("/api/user/{user_id}", api_get_user)
         web.router.add_get("/api/history/{user_id}", api_get_history)
         web.router.add_get("/api/stats/public", api_get_stats)
         web.router.add_post("/api/validate_user", api_validate)
         web.router.add_post("/api/buy", api_buy)
-        web.router.add_post(f"/{TELEGRAM_BOT_TOKEN}", handle_webhook)
+        if WH_URL:
+            web.router.add_post(f"/{TELEGRAM_BOT_TOKEN}", handle_webhook)
         web.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
+
         runner = aiohttp.web.AppRunner(web)
         await runner.setup()
         await aiohttp.web.TCPSite(runner, "0.0.0.0", PORT).start()
-        logging.info(f"Webhook+REST running on port {PORT}")
-        await asyncio.Event().wait()
-    else:
-        # Polling mode (local dev + Railway without WEBHOOK_URL)
-        logging.info("Bot started (polling mode).")
-        await app.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=["message", "callback_query", "pre_checkout_query"],
-        )
+        logging.info(f"HTTP server on port {PORT}")
+
+    await asyncio.Event().wait()  # keep alive forever
 
 
 def main():
