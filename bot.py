@@ -6,6 +6,7 @@ import logging
 import random
 import urllib.request
 import asyncio
+import signal
 import hmac
 import hashlib
 import httpx
@@ -2984,13 +2985,8 @@ def _build_app():
 
     async def error_handler(update, context):
         if isinstance(context.error, Conflict):
-            logging.warning("409 Conflict — newer instance detected, stopping polling on this one")
-            # Stop this instance's updater so the new deployment takes over
-            try:
-                if app.updater and app.updater.running:
-                    asyncio.create_task(app.updater.stop())
-            except Exception as stop_err:
-                logging.warning(f"Error stopping updater: {stop_err}")
+            # Just log — both instances get 409; let SIGTERM/startup loop handle coordination
+            logging.warning("409 Conflict during polling (transient during deploy)")
             return
         logging.exception(context.error)
 
@@ -3005,10 +3001,20 @@ async def _async_main():
     app = _build_app()
     _bot_app_ref = app
 
+    # ── SIGTERM handler — stop polling so the new instance can take over ─────────
+    loop = asyncio.get_running_loop()
+    shutdown_event = asyncio.Event()
+
+    def _on_shutdown():
+        logging.info("Shutdown signal received — stopping bot")
+        shutdown_event.set()
+
+    loop.add_signal_handler(signal.SIGTERM, _on_shutdown)
+    loop.add_signal_handler(signal.SIGINT, _on_shutdown)
+
     await app.initialize()
 
-    # ── Step 1: start HTTP server FIRST so Railway health-check passes ──────────
-    # This signals Railway to send SIGTERM to the OLD instance before we start polling.
+    # ── Step 1: HTTP server FIRST so Railway health-check passes immediately ─────
     if _AIOHTTP:
         web = aiohttp.web.Application()
 
@@ -3030,24 +3036,53 @@ async def _async_main():
         await aiohttp.web.TCPSite(runner, "0.0.0.0", PORT).start()
         logging.info(f"HTTP server on port {PORT}")
 
-    # ── Step 2: start bot (webhook or polling) ───────────────────────────────────
+    # ── Step 2: start bot ────────────────────────────────────────────────────────
     if WH_URL and _AIOHTTP:
         # Webhook mode — only when WEBHOOK_URL env var is explicitly set
         await app.bot.delete_webhook(drop_pending_updates=True)
         await app.bot.set_webhook(url=f"{WH_URL}/tgwebhook")
         await app.start()
         logging.info(f"Webhook mode: {WH_URL}/tgwebhook")
+        await shutdown_event.wait()
     else:
-        # Polling mode (default)
+        # Polling mode — wait for old instance to release the lock (Railway overlap window)
         await app.bot.delete_webhook(drop_pending_updates=True)
+        logging.info("Waiting for old instance to release polling lock…")
+        for attempt in range(40):  # up to ~120s
+            if shutdown_event.is_set():
+                await app.shutdown()
+                return
+            try:
+                await app.bot.get_updates(offset=-1, limit=1, timeout=2, allowed_updates=[])
+                logging.info(f"Polling lock acquired after {attempt * 3}s")
+                break
+            except Exception as e:
+                if "Conflict" in str(e):
+                    logging.warning(f"  Conflict (attempt {attempt+1}/40), waiting 3s…")
+                    await asyncio.sleep(3)
+                else:
+                    break  # non-conflict error, proceed anyway
+        if shutdown_event.is_set():
+            await app.shutdown()
+            return
         await app.start()
         await app.updater.start_polling(
             drop_pending_updates=True,
             allowed_updates=["message", "callback_query", "pre_checkout_query"],
         )
         logging.info("Polling mode active.")
+        # Wait for SIGTERM
+        await shutdown_event.wait()
 
-    await asyncio.Event().wait()  # keep alive forever
+    # ── Graceful shutdown ────────────────────────────────────────────────────────
+    logging.info("Shutting down gracefully…")
+    try:
+        if app.updater and app.updater.running:
+            await app.updater.stop()
+        await app.stop()
+    except Exception as e:
+        logging.warning(f"Shutdown error: {e}")
+    await app.shutdown()
 
 
 def main():
