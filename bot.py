@@ -423,14 +423,18 @@ def analyze_product_image(image_path: str, user_caption: str = "") -> dict:
   ],
   "badge": "ХИТ | НОВИНКА | -20% | БЕСТСЕЛЛЕР | ТОП",
   "color_theme": "warm | cool | neutral | dark",
-  "scene_description": "Детальное описание красивой сцены для товара НА АНГЛИЙСКОМ. Описывай окружение, декор, атмосферу — НЕ сам товар. Например для свечи: 'cozy bright living room, sofa with soft cushions, warm morning light, dried flowers, candles around'."
+  "scene_description": "EXTREMELY DETAILED description of a RICH lifestyle scene ON ENGLISH. Must list 6-8 SPECIFIC real-world props that match the product category. Example for a candle: 'rustic wooden table, scattered dried orange slices, cinnamon sticks, star anise, pine cones, fresh pine branches, tiny fairy lights / warm bokeh, soft fabric napkin'. Example for cosmetics: 'marble vanity, fresh roses, cotton pads, glass bottle, silk fabric, gold tray, warm side lighting'. NEVER generic — always CONCRETE, SPECIFIC, ABUNDANT props.",
+  "scene_props": ["prop1 in English", "prop2", "prop3", "prop4", "prop5", "prop6"]
 }}
 {user_hint_block}
 Правила:
-- Пиши по-русски (кроме scene_description — оно на АНГЛИЙСКОМ)
-- Преимущества — конкретные, с цифрами (напр: "Горит 25 часов", "100% кокос. воск")
+- Пиши по-русски (кроме scene_description и scene_props — они на АНГЛИЙСКОМ)
+- Преимущества — УНИКАЛЬНЫЕ, конкретные, с цифрами (напр: "Горит 25 часов", "100% кокос. воск")
+- НИКОГДА не повторяй одно и то же преимущество дважды
+- Каждое преимущество должно быть РАЗНЫМ — про разные свойства товара
 - color_theme: warm=еда/beauty/дом/свечи, cool=техника/спорт, neutral=одежда, dark=люкс
-- scene_description — ВСЕГДА на английском, максимально детально, с учётом пожеланий пользователя
+- scene_description — ВСЕГДА на английском, максимально детально, 6-8 конкретных реквизитов
+- scene_props — список конкретных предметов на английском для декорирования сцены
 """
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -465,210 +469,218 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
     features = data.get("features", [])[:4]
     badge    = data.get("badge", "")
     scene    = data.get("scene_description", "luxury product photography, warm bokeh, elegant")
+    props    = data.get("scene_props", [])
 
-    feat_text = "\n".join(f"• {f}" for f in features)
+    # Build feature list with position hints
+    feat_positions = ["top-left", "top-right", "bottom-left", "bottom-right"]
+    feat_lines = []
+    for i, f in enumerate(features):
+        pos = feat_positions[i] if i < len(feat_positions) else "side"
+        feat_lines.append(f"  [{pos}] «{f}»")
+    feat_text = "\n".join(feat_lines)
 
-    # Если пользователь указал пожелания — они ПОЛНОСТЬЮ ЗАМЕНЯЮТ сцену
+    props_text = ", ".join(props) if props else ""
+
+    # Если пользователь указал пожелания — добавляем к сцене
     if user_caption:
-        scene = user_caption  # Пожелания клиента = описание сцены
+        scene = f"{user_caption}. {scene}"
 
     style = random.randint(0, 3)
 
-    # Pre-built rules injected at the top of every prompt
-    TEXT_ACCURACY_RULES = f"""⚠️ ABSOLUTE TEXT ACCURACY LAW — OBEY WITHOUT EXCEPTION ⚠️
-TITLE must be printed EXACTLY as: «{title}»
-SUBTITLE must be printed EXACTLY as: «{subtitle}»
-Features must be printed EXACTLY as given below.
-• Copy every letter, space, and punctuation CHARACTER BY CHARACTER.
-• DO NOT add, remove, or change even ONE letter.
-• DO NOT invent, translate, or rephrase any word.
-• «{title}» — memorize this spelling. Reproduce it perfectly.
-• NEVER render readable text on the product itself or its label.
-  If the product has a label, render it blurred/unreadable — all text goes in the overlay callouts ONLY.
-• Minimum 60px safe margin from ALL edges — no text cut off.
-• Every callout label must be COMPLETE — never cropped by the frame border.
-"""
+    # Shared rules for text accuracy
+    TEXT_RULES = f"""═══ TEXT ACCURACY (CRITICAL) ═══
+• TITLE text: «{title}» — copy EXACTLY letter by letter
+• SUBTITLE text: «{subtitle}» — copy EXACTLY letter by letter
+• Feature labels: copy EXACTLY as given — do NOT rephrase, do NOT translate
+• Keep the product's original label INTACT and READABLE — do NOT blur or alter it
+• ALL text FULLY VISIBLE — 60px margin from edges, nothing cut off or cropped
+• Russian Cyrillic text only — no Latin letters, no garbled/invented words"""
 
     if style == 0:
-        # STYLE: Arrow callouts — luxury annotated product card
-        prompt = f"""{TEXT_ACCURACY_RULES}
-Create a STUNNING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        # STYLE 0: Warm lifestyle with curved arrows (like best competitor cards)
+        prompt = f"""Create a PREMIUM marketplace infographic card (Wildberries/OZON style). 1080×1080px.
 
-🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+{TEXT_RULES}
 
-═══ PRODUCT PLACEMENT (CRITICAL) ═══
-The product from the photo MUST be placed DEAD CENTER of the image.
-It must occupy 60% of the total frame — large, dominant, impossible to miss.
-Render it photo-realistically, exactly as it looks in the input image.
-Surround it with a LUSH lifestyle scene: fresh flowers, natural textures (marble, wood, silk, linen),
-scattered botanicals or ingredients relevant to the product. Scene fills all corners.
+═══ SCENE & PRODUCT ═══
+Place the product from the input photo in the CENTER-LOWER area, occupying ~55% of frame.
+Keep product EXACTLY as it looks — same shape, same label, same colors. Photo-realistic.
 
-═══ LIGHTING & COLOR ═══
-• Primary palette: deep jewel tones — emerald, sapphire, burgundy, or deep amber — in the background
-• Product lit with soft frontal key light + warm golden rim light
-• Background: rich bokeh with color depth, NOT flat. Layer multiple light sources.
-• Color grading: rich, saturated, editorial — think Vogue product photography
+Build a RICH, ABUNDANT lifestyle scene around it:
+{scene}
+Specific props to include: {props_text}
+Fill ALL corners with relevant props — dried flowers, ingredients, textures, natural materials.
+Scene must feel WARM, COZY, INVITING — like a premium Instagram flat lay.
 
-═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
-TITLE «{title}»:
-  — Massive, top-center, bold display font (like Playfair Display or Cormorant Garamond)
-  — Color: bright gold (#FFD700) or luminous ivory with golden outline
-  — Letter-spacing: slightly wide, elegant
+═══ LIGHTING ═══
+Warm golden-hour lighting. Fairy lights / warm bokeh in background.
+Product well-lit from front. Rich warm shadows adding depth.
+Color palette: honey gold, warm cream, terracotta, deep amber.
 
-SUBTITLE «{subtitle}»:
-  — Italic serif or thin elegant sans, below title
-  — Color: soft champagne or rose gold
+═══ TYPOGRAPHY LAYOUT ═══
 
-FEATURE CALLOUTS with CURVED ARROW LINES pointing to product:
+TITLE «{title}» at TOP of image:
+  → LARGE bold serif font (Playfair Display / Cormorant style)
+  → Color: deep charcoal or rich brown — DIFFERENT from subtitle color
+  → Takes up ~20% of top area
+
+SUBTITLE «{subtitle}» directly below title:
+  → DIFFERENT font: elegant italic or light script
+  → Color: warm gold or muted terracotta — CONTRASTS with title
+  → Smaller size than title
+
+FEATURE CALLOUTS with CURVED ARROWS pointing to product:
 {feat_text}
-  — Place labels at 4 corners (top-left, top-right, bottom-left, bottom-right)
-  — Each label: clean white sans-serif text on semi-transparent dark pill shape
-  — Arrows: thin, elegant, slightly curved white/gold lines with small arrowhead tip
-  — Arrows point FROM label TOWARD the relevant part of the product
+  → Each feature: BOLD white or cream text, slightly different sizes
+  → Small curved arrow line FROM each label TOWARD the product
+  → Arrows: thin, elegant, slightly curved, white or gold color
+  → Labels spread around product at 4 corners — NOT overlapping
+  → Each label uses a DIFFERENT font weight or style for variety
 
-═══ OVERALL ═══
-RESULT: Museum-quality product card. Looks like a campaign for a luxury Russian brand.
-Rich colors, cinematic depth, gorgeous typography. NOT flat, NOT dull, NOT generic.
-
-═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+═══ DESIGN QUALITY ═══
+This must look like a TOP-TIER professional Wildberries product card.
+Rich, warm, lifestyle feel. Abundant scene with many beautiful props.
+Multiple font styles and colors create visual interest and hierarchy.
+NOT flat, NOT minimal, NOT generic — RICH and ABUNDANT like a luxury brand."""
 
     elif style == 1:
-        # STYLE: Modern editorial — floating badges, no arrows
-        prompt = f"""{TEXT_ACCURACY_RULES}
-Create a BREATHTAKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        # STYLE 1: Modern clean with geometric accents and floating labels
+        prompt = f"""Create a STUNNING modern marketplace infographic card (Wildberries/OZON style). 1080×1080px.
 
-🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+{TEXT_RULES}
 
-═══ PRODUCT PLACEMENT (CRITICAL) ═══
-Product from the photo: PERFECTLY CENTERED, taking up 60% of the frame.
-Sharp focus on product, background has natural depth-of-field blur.
-Around product: editorial lifestyle staging — textured fabrics, flowers, matching props.
+═══ SCENE & PRODUCT ═══
+Place the product from the input photo CENTERED, occupying ~55% of frame.
+Keep product EXACTLY as it looks — same shape, same label. Photo-realistic rendering.
 
-═══ LIGHTING & COLOR ═══
-• Background: soft, creamy, desaturated (linen, alabaster, blush) — clean and luxe
-• Product: crisp, bright, perfectly lit — studio beauty lighting
-• Accents: dusty rose, sage green, warm terracotta, or soft cobalt as accent colors
-• Feel: high-fashion magazine editorial, Scandinavian luxury
+Background: soft creamy/blush gradient or textured linen/marble surface.
+Minimal but ELEGANT props around product: {props_text}
+Clean, editorial, magazine-quality styling. Scandinavian luxury feel.
 
-═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
-TITLE «{title}»:
-  — Top area, large bold condensed sans-serif (like Neue Haas Grotesk or Futura Bold)
-  — Color: rich black or deep charcoal with thin colored accent line underneath
-  — Very confident, clean, architectural
+═══ LIGHTING ═══
+Bright, airy, natural studio lighting. Soft shadows.
+Product perfectly lit — crisp and inviting.
+Palette: soft whites, blush pink, sage green, warm beige accents.
 
-SUBTITLE «{subtitle}»:
-  — Light weight, elegant, below title. Color: medium gray or muted accent
+═══ TYPOGRAPHY LAYOUT ═══
 
-FEATURES as FLOATING BADGE LABELS (NO arrows):
+TITLE «{title}» at TOP:
+  → BOLD condensed sans-serif (Futura / Montserrat style), UPPERCASE
+  → Color: rich black or deep forest green
+  → Clean, modern, confident
+
+SUBTITLE «{subtitle}» below title:
+  → THIN light sans-serif or italic — DIFFERENT weight from title
+  → Color: muted rose or warm gray — contrast with title
+
+FEATURE LABELS as FLOATING PILLS around product:
 {feat_text}
-  — Each feature: small rounded rectangle pill, positioned AROUND the centered product
-  — Pills: matte dark background (charcoal or deep navy) with bright white text
-  — Small accent dot or icon before each text
-  — Placed asymmetrically for visual rhythm: some higher, some lower
+  → Each feature in a small rounded-rectangle pill/badge
+  → Pills: semi-transparent dark background with bright white text
+  → Each pill has a THIN line connecting to the product
+  → Asymmetric placement — different heights for visual rhythm
+  → Use DIFFERENT text sizes: main features larger, details smaller
 
-═══ OVERALL ═══
-Aesthetic: modern Scandinavian luxury, minimal but rich in detail.
-Typography is the hero. Colors are muted but intentional. NOT sterile — textured and warm.
+BADGE «{badge}» — small accent badge in corner with accent color background.
 
-═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+═══ DESIGN QUALITY ═══
+Modern, editorial, Instagram-worthy. Clean but NOT boring.
+Different font sizes and weights create HIERARCHY and visual interest.
+Looks like a Scandinavian beauty brand campaign."""
 
     elif style == 2:
-        # STYLE: Dark dramatic — cinematic with vibrant accent color
-        prompt = f"""{TEXT_ACCURACY_RULES}
-Create a VISUALLY STRIKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        # STYLE 2: Dark cinematic with glowing accents and neon-style lines
+        prompt = f"""Create a DRAMATIC premium marketplace infographic card (Wildberries/OZON style). 1080×1080px.
 
-🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+{TEXT_RULES}
 
-═══ PRODUCT PLACEMENT (CRITICAL) ═══
-Product from the photo: DEAD CENTER of the image, occupying 60% of the frame.
-Bold, dramatic, heroic presence. Nothing competes with it visually.
-Scene: moody and cinematic — deep shadows, dramatic props, rich textures behind and around product.
+═══ SCENE & PRODUCT ═══
+Place the product from the input photo CENTERED, occupying ~55% of frame.
+Keep product EXACTLY as it looks — same label, same colors. Photo-realistic.
 
-═══ LIGHTING & COLOR ═══
-• Dominant palette: DARK — deep navy, charcoal, near-black background
-• Vivid accent: choose ONE strong accent color (neon teal, electric coral, gold, or violet)
-• Product lit dramatically from one side + subtle colored rim light matching the accent
-• Background: scattered points of light (bokeh), smoke or mist effect, luxury product vibe
-• Color grading: moody, contrasty, cinematic — like a perfume commercial
+Background: DEEP dark scene — dark wood, dark marble, deep navy/charcoal.
+Dramatic props: {props_text}
+Moody, cinematic atmosphere — like a luxury perfume ad.
+Scattered warm bokeh lights or subtle smoke/mist in background.
 
-═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
-TITLE «{title}»:
-  — HUGE, dominant, top center
-  — White or vibrant accent color
-  — Bold display font with strong presence — condensed or wide, not regular weight
+═══ LIGHTING ═══
+Dramatic side lighting on product — strong key light from left + warm rim light.
+Background very dark with subtle warm highlights.
+ONE vibrant accent color throughout: gold, teal, or coral.
+Palette: near-black, deep navy, warm gold accents, rich shadows.
 
-SUBTITLE «{subtitle}»:
-  — Elegant thin font below title, in accent color or light silver
+═══ TYPOGRAPHY LAYOUT ═══
 
-FEATURES — annotated with ELEGANT POINTER LINES:
+TITLE «{title}» at TOP — HUGE and BOLD:
+  → Massive display font — wide or condensed bold
+  → Color: bright WHITE or GOLD — maximum contrast against dark
+  → Dominates the top 25% of image
+
+SUBTITLE «{subtitle}» below title:
+  → Elegant thin italic — VERY different from bold title
+  → Color: warm gold or soft accent color
+  → Creates contrast with heavy title
+
+FEATURE CALLOUTS with GLOWING POINTER LINES:
 {feat_text}
-  — Feature text in glowing/bright labels connected to product by thin luminous lines
-  — Labels glow subtly matching the accent color
-  — Spread evenly around the product
+  → Features connected to product by thin luminous/glowing lines
+  → Line color: accent gold or teal — subtly glowing
+  → Label text: bright white, clean sans-serif
+  → Each label slightly DIFFERENT size for visual variety
+  → Spread evenly at 4 positions around product
 
-═══ OVERALL ═══
-Final look: A bold, dark, dramatic luxury product card. Like a high-end perfume or tech launch campaign.
-Extremely visual, premium, impossible to scroll past.
-
-═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+═══ DESIGN QUALITY ═══
+Bold, dramatic, impossible to scroll past. Like a high-end brand launch.
+Cinematic depth, dramatic lighting, rich textures.
+Multiple font styles (bold vs thin, large vs small) create VISUAL RHYTHM."""
 
     else:
-        # STYLE: Warm organic — lifestyle rich
-        prompt = f"""{TEXT_ACCURACY_RULES}
-Create an EXQUISITE warm lifestyle product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
+        # STYLE 3: Festive/seasonal with decorative elements and ornate typography
+        prompt = f"""Create a GORGEOUS festive marketplace infographic card (Wildberries/OZON style). 1080×1080px.
 
-🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+{TEXT_RULES}
 
-═══ PRODUCT PLACEMENT (CRITICAL) ═══
-Product from the photo: CENTERED, occupying 60% of the frame — large, beautiful, in perfect focus.
-The product should look appetizing, inviting, desirable.
-Around it: an abundant, lush organic scene — fresh botanicals, fruit slices, fabric textures,
-natural materials (wood, stone, terra cotta) that perfectly match the product category.
-EVERY CORNER filled with beautiful lifestyle props. Scene is abundant, NOT sparse.
+═══ SCENE & PRODUCT ═══
+Place the product from the input photo in CENTER, occupying ~55% of frame.
+Keep product EXACTLY as it looks — same label, same shape. Photo-realistic.
 
-═══ LIGHTING & COLOR ═══
-• Warm golden hour lighting — honey-gold, amber, sunset tones
-• Palette: rich terracotta, deep sage, warm cream, burnt sienna, dusty rose
-• Multiple warm light sources: top-down golden light + soft side fill
-• Deep warm shadows that add dimension, not darkness
-• Result: feels like a beautiful food/beauty/lifestyle Instagram still life
+Build a RICH, FESTIVE, ABUNDANT scene around it:
+{scene}
+Props to include: {props_text}
+Add decorative natural elements in ALL corners — botanicals, spices, fabrics, seasonal items.
+Scene should feel ABUNDANT and GENEROUS — every corner filled with beautiful things.
+Warm fairy lights / golden bokeh throughout the background.
 
-═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
-TITLE «{title}»:
-  — Top of image, large elegant serif (like Garamond or Bodoni)
-  — Color: deep warm terracotta or rich burgundy
-  — Slight vintage charm, but modern and premium
+═══ LIGHTING ═══
+Multiple warm light sources — fairy lights, candle glow, golden hour.
+Product bathed in warm light. Rich, deep, warm shadows.
+Palette: deep burgundy, forest green, warm gold, cream, cinnamon brown.
 
-SUBTITLE «{subtitle}»:
-  — Script or italic serif, slightly smaller. Color: muted gold or warm taupe
+═══ TYPOGRAPHY LAYOUT ═══
 
-FEATURES:
+TITLE «{title}» at TOP — elegant and decorative:
+  → Beautiful SERIF font with character (Playfair, Bodoni, or decorative serif)
+  → Color: deep burgundy, forest green, or rich gold
+  → Slightly decorative feel — premium but warm
+
+SUBTITLE «{subtitle}» below title:
+  → Light italic or script font — COMPLETELY different from title font
+  → Color: warm gold or soft cream — creates visual layers
+
+FEATURE CALLOUTS with CURVED ARROWS and VARIED STYLING:
 {feat_text}
-  — Each feature placed near edges, framed by small decorative botanical element
-  — Text in warm charcoal or deep brown — warm, organic, hand-crafted feel
-  — No arrows — features naturally integrated into the scene layout
+  → Features placed at 4 positions around the product
+  → Thin curved arrows pointing FROM label TO product
+  → VARY the styling: some labels BOLD, some light, some in DIFFERENT COLORS
+  → Use at least 2 different text colors: white + gold, or cream + brown
+  → Some labels larger (key features), some smaller (details)
+  → Small decorative botanical elements near some labels
 
-═══ OVERALL ═══
-Final look: An artisan lifestyle editorial. Like a premium organic/beauty brand campaign.
-Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, abundant scene.
-
-═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+═══ DESIGN QUALITY ═══
+Looks like a premium artisan brand campaign — warm, festive, luxurious.
+ABUNDANT scene with rich props filling every corner.
+Multiple font styles, sizes, and colors create VISUAL DIVERSITY.
+NOT monotonous — each element feels unique and hand-crafted."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
