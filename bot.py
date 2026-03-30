@@ -471,15 +471,8 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
     scene    = data.get("scene_description", "luxury product photography, warm bokeh, elegant")
     props    = data.get("scene_props", [])
 
-    # Build feature list with position hints
-    feat_positions = ["top-left", "top-right", "bottom-left", "bottom-right"]
-    feat_lines = []
-    for i, f in enumerate(features):
-        pos = feat_positions[i] if i < len(feat_positions) else "side"
-        feat_lines.append(f"  [{pos}] «{f}»")
-    feat_text = "\n".join(feat_lines)
-
-    props_text = ", ".join(props) if props else ""
+    feat_text = "\n".join(f"  «{f}»" for f in features)
+    props_text = ", ".join(props) if props else "natural lifestyle props matching this product"
 
     # Если пользователь указал пожелания — добавляем к сцене
     if user_caption:
@@ -487,200 +480,165 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
 
     style = random.randint(0, 3)
 
-    # Shared rules for text accuracy
-    TEXT_RULES = f"""═══ TEXT ACCURACY (CRITICAL) ═══
-• TITLE text: «{title}» — copy EXACTLY letter by letter
-• SUBTITLE text: «{subtitle}» — copy EXACTLY letter by letter
-• Feature labels: copy EXACTLY as given — do NOT rephrase, do NOT translate
-• Keep the product's original label INTACT and READABLE — do NOT blur or alter it
-• ALL text FULLY VISIBLE — 60px margin from edges, nothing cut off or cropped
-• Russian Cyrillic text only — no Latin letters, no garbled/invented words"""
+    # Shared core that ALL styles use
+    CORE_RULES = f"""═══ ABSOLUTE RULES ═══
+• ALL text in Russian Cyrillic — EXACT spelling as given, letter by letter
+• Product label stays INTACT and READABLE — do NOT blur or distort it
+• ALL text FULLY VISIBLE — 60px margin from edges, nothing cropped
+• TITLE: «{title}» | SUBTITLE: «{subtitle}»
+• Features: {feat_text}
+
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+Product from input photo: CENTERED, occupying 55-60% of the frame.
+Render photo-realistically — same shape, same label, same colors as input.
+Product is the HERO — large, dominant, in sharp focus, perfectly lit.
+
+═══ SCENE (CRITICAL — FILL EVERY CORNER) ═══
+{scene}
+SPECIFIC PROPS TO RENDER: {props_text}
+Scatter these props ABUNDANTLY around the product — on the surface, in corners, behind it.
+Scene must be RICH and FULL — no empty spaces. Like a styled Instagram flat lay photo.
+
+═══ LIGHTING (CRITICAL — BRIGHT AND WARM) ═══
+• Overall image must be BRIGHT, WARM, WELL-LIT — NOT dark, NOT moody, NOT dim
+• Warm golden-hour lighting — honey tones, soft warm highlights everywhere
+• Fairy lights / warm circular bokeh in the background — LOTS of them
+• Product brightly lit from front — no harsh shadows on it
+• Background: warm, glowing, inviting — visible detail in every area
+• NEVER make the image dark or underexposed. BRIGHT and WARM is mandatory."""
 
     if style == 0:
-        # STYLE 0: Warm lifestyle with curved arrows (like best competitor cards)
-        prompt = f"""Create a PREMIUM marketplace infographic card (Wildberries/OZON style). 1080×1080px.
+        # STYLE 0: Warm rustic with curved arrows + abundant natural props
+        prompt = f"""{CORE_RULES}
 
-{TEXT_RULES}
+═══ STYLE: Warm Rustic Lifestyle ═══
+Surface: rustic wooden table or warm wooden board.
+Background: warm fairy lights bokeh, soft golden glow.
+Color palette: warm cream, honey gold, cinnamon brown, soft terracotta.
 
-═══ SCENE & PRODUCT ═══
-Place the product from the input photo in the CENTER-LOWER area, occupying ~55% of frame.
-Keep product EXACTLY as it looks — same shape, same label, same colors. Photo-realistic.
+═══ TYPOGRAPHY ═══
+TITLE «{title}» at TOP — 20% of image:
+  → Large bold serif font (like Playfair Display), UPPERCASE or mixed case
+  → Color: deep warm brown or charcoal — strong contrast against bright background
+  → Elegant, premium, readable
 
-Build a RICH, ABUNDANT lifestyle scene around it:
-{scene}
-Specific props to include: {props_text}
-Fill ALL corners with relevant props — dried flowers, ingredients, textures, natural materials.
-Scene must feel WARM, COZY, INVITING — like a premium Instagram flat lay.
+SUBTITLE «{subtitle}» below title:
+  → Italic serif or light script — DIFFERENT from title font
+  → Color: warm gold or muted terracotta
 
-═══ LIGHTING ═══
-Warm golden-hour lighting. Fairy lights / warm bokeh in background.
-Product well-lit from front. Rich warm shadows adding depth.
-Color palette: honey gold, warm cream, terracotta, deep amber.
+FEATURE CALLOUTS — with CURVED ARROWS pointing to product:
+  → Place 4 labels around product (top-left, top-right, bottom-left, bottom-right)
+  → Each label: BOLD text in warm brown or charcoal
+  → CURVED arrow lines (organic, hand-drawn feel — NOT straight, NOT rigid)
+  → Arrows: thin, cream/gold color, gently curving from label toward product
+  → VARY font sizes: 2 main features LARGER, 2 details SMALLER
 
-═══ TYPOGRAPHY LAYOUT ═══
-
-TITLE «{title}» at TOP of image:
-  → LARGE bold serif font (Playfair Display / Cormorant style)
-  → Color: deep charcoal or rich brown — DIFFERENT from subtitle color
-  → Takes up ~20% of top area
-
-SUBTITLE «{subtitle}» directly below title:
-  → DIFFERENT font: elegant italic or light script
-  → Color: warm gold or muted terracotta — CONTRASTS with title
-  → Smaller size than title
-
-FEATURE CALLOUTS with CURVED ARROWS pointing to product:
-{feat_text}
-  → Each feature: BOLD white or cream text, slightly different sizes
-  → Small curved arrow line FROM each label TOWARD the product
-  → Arrows: thin, elegant, slightly curved, white or gold color
-  → Labels spread around product at 4 corners — NOT overlapping
-  → Each label uses a DIFFERENT font weight or style for variety
-
-═══ DESIGN QUALITY ═══
-This must look like a TOP-TIER professional Wildberries product card.
-Rich, warm, lifestyle feel. Abundant scene with many beautiful props.
-Multiple font styles and colors create visual interest and hierarchy.
-NOT flat, NOT minimal, NOT generic — RICH and ABUNDANT like a luxury brand."""
+═══ RESULT ═══
+Bright, warm, cozy, abundant. Like the BEST Wildberries product cards.
+Props fill every corner. Fairy lights sparkle. Product shines in center."""
 
     elif style == 1:
-        # STYLE 1: Modern clean with geometric accents and floating labels
-        prompt = f"""Create a STUNNING modern marketplace infographic card (Wildberries/OZON style). 1080×1080px.
+        # STYLE 1: Light elegant with organic flowing arrows
+        prompt = f"""{CORE_RULES}
 
-{TEXT_RULES}
+═══ STYLE: Light Elegant Editorial ═══
+Surface: light marble, white linen, or pale wood — BRIGHT surface.
+Background: soft warm bokeh, blush/cream tones.
+Color palette: ivory, blush pink, sage green, soft gold accents.
+Overall feel: BRIGHT, AIRY, CLEAN but rich with props.
 
-═══ SCENE & PRODUCT ═══
-Place the product from the input photo CENTERED, occupying ~55% of frame.
-Keep product EXACTLY as it looks — same shape, same label. Photo-realistic rendering.
-
-Background: soft creamy/blush gradient or textured linen/marble surface.
-Minimal but ELEGANT props around product: {props_text}
-Clean, editorial, magazine-quality styling. Scandinavian luxury feel.
-
-═══ LIGHTING ═══
-Bright, airy, natural studio lighting. Soft shadows.
-Product perfectly lit — crisp and inviting.
-Palette: soft whites, blush pink, sage green, warm beige accents.
-
-═══ TYPOGRAPHY LAYOUT ═══
-
+═══ TYPOGRAPHY ═══
 TITLE «{title}» at TOP:
-  → BOLD condensed sans-serif (Futura / Montserrat style), UPPERCASE
-  → Color: rich black or deep forest green
+  → Large bold condensed sans-serif, UPPERCASE
+  → Color: deep forest green or rich charcoal — STRONG contrast
   → Clean, modern, confident
 
 SUBTITLE «{subtitle}» below title:
-  → THIN light sans-serif or italic — DIFFERENT weight from title
-  → Color: muted rose or warm gray — contrast with title
+  → Thin elegant italic — contrasts with bold title
+  → Color: muted rose or soft gold
 
-FEATURE LABELS as FLOATING PILLS around product:
-{feat_text}
-  → Each feature in a small rounded-rectangle pill/badge
-  → Pills: semi-transparent dark background with bright white text
-  → Each pill has a THIN line connecting to the product
-  → Asymmetric placement — different heights for visual rhythm
-  → Use DIFFERENT text sizes: main features larger, details smaller
+FEATURE CALLOUTS with FLOWING CURVED ARROWS:
+  → 4 labels positioned around the centered product
+  → Thin CURVED arrow lines (flowing, organic — like hand-drawn)
+  → Arrow color: soft sage green or rose gold
+  → Label text: mix of BOLD and light weights for variety
+  → Use 2 colors: charcoal for main features, muted gold for secondary
+  → Small decorative leaf/botanical element near 1-2 labels
 
-BADGE «{badge}» — small accent badge in corner with accent color background.
-
-═══ DESIGN QUALITY ═══
-Modern, editorial, Instagram-worthy. Clean but NOT boring.
-Different font sizes and weights create HIERARCHY and visual interest.
-Looks like a Scandinavian beauty brand campaign."""
+═══ RESULT ═══
+Bright, clean, elegant. Premium but warm. Magazine editorial quality.
+Product glows in bright soft light. Props add texture without clutter."""
 
     elif style == 2:
-        # STYLE 2: Dark cinematic with glowing accents and neon-style lines
-        prompt = f"""Create a DRAMATIC premium marketplace infographic card (Wildberries/OZON style). 1080×1080px.
+        # STYLE 2: Golden warm with mixed typography and abundant botanicals
+        prompt = f"""{CORE_RULES}
 
-{TEXT_RULES}
+═══ STYLE: Golden Warm Botanical ═══
+Surface: warm wooden table with visible grain texture.
+Background: GOLDEN warm bokeh — many soft circular light spots.
+Color palette: deep gold, warm amber, cream, burnt sienna, forest green.
+Fill scene with BOTANICAL elements: leaves, dried flowers, spices, natural textures.
 
-═══ SCENE & PRODUCT ═══
-Place the product from the input photo CENTERED, occupying ~55% of frame.
-Keep product EXACTLY as it looks — same label, same colors. Photo-realistic.
-
-Background: DEEP dark scene — dark wood, dark marble, deep navy/charcoal.
-Dramatic props: {props_text}
-Moody, cinematic atmosphere — like a luxury perfume ad.
-Scattered warm bokeh lights or subtle smoke/mist in background.
-
-═══ LIGHTING ═══
-Dramatic side lighting on product — strong key light from left + warm rim light.
-Background very dark with subtle warm highlights.
-ONE vibrant accent color throughout: gold, teal, or coral.
-Palette: near-black, deep navy, warm gold accents, rich shadows.
-
-═══ TYPOGRAPHY LAYOUT ═══
-
-TITLE «{title}» at TOP — HUGE and BOLD:
-  → Massive display font — wide or condensed bold
-  → Color: bright WHITE or GOLD — maximum contrast against dark
-  → Dominates the top 25% of image
+═══ TYPOGRAPHY ═══
+TITLE «{title}» at TOP — dominant:
+  → Elegant serif font with DECORATIVE CHARACTER (Bodoni or similar)
+  → Color: deep warm burgundy or rich forest green
+  → Large, beautiful, eye-catching
 
 SUBTITLE «{subtitle}» below title:
-  → Elegant thin italic — VERY different from bold title
-  → Color: warm gold or soft accent color
-  → Creates contrast with heavy title
+  → Script/calligraphic or thin italic — VERY different from title
+  → Color: warm gold or soft cream
 
-FEATURE CALLOUTS with GLOWING POINTER LINES:
-{feat_text}
-  → Features connected to product by thin luminous/glowing lines
-  → Line color: accent gold or teal — subtly glowing
-  → Label text: bright white, clean sans-serif
-  → Each label slightly DIFFERENT size for visual variety
-  → Spread evenly at 4 positions around product
+FEATURE CALLOUTS with CURVED ARROWS:
+  → 4 labels at corners around product
+  → CURVED organic arrow lines pointing to product — smooth, flowing
+  → Arrow style: thin, warm gold or cream colored
+  → Label text uses MULTIPLE STYLES:
+    - 2 features in BOLD UPPERCASE (sans-serif)
+    - 2 features in lighter italic (serif)
+  → Different colors: some warm brown, some cream/gold
+  → Small botanical decorations near labels (tiny leaf, flower)
 
-═══ DESIGN QUALITY ═══
-Bold, dramatic, impossible to scroll past. Like a high-end brand launch.
-Cinematic depth, dramatic lighting, rich textures.
-Multiple font styles (bold vs thin, large vs small) create VISUAL RHYTHM."""
+═══ RESULT ═══
+Warm, golden, abundant, alive with botanicals and warm light.
+Like a luxury artisan brand photoshoot. Bright and inviting."""
 
     else:
-        # STYLE 3: Festive/seasonal with decorative elements and ornate typography
-        prompt = f"""Create a GORGEOUS festive marketplace infographic card (Wildberries/OZON style). 1080×1080px.
+        # STYLE 3: Bright festive with rich props and varied callout styles
+        prompt = f"""{CORE_RULES}
 
-{TEXT_RULES}
+═══ STYLE: Bright Festive Abundance ═══
+Surface: warm wood or natural fabric (linen, burlap).
+Background: LOTS of warm fairy lights / golden bokeh — festive, bright, sparkling.
+Color palette: warm cream, cinnamon, gold, deep green, touches of burgundy.
+EVERY CORNER must have props: botanicals, spices, ingredients, natural elements.
+Scene feels CELEBRATORY, WARM, ABUNDANT — like a holiday gift display.
 
-═══ SCENE & PRODUCT ═══
-Place the product from the input photo in CENTER, occupying ~55% of frame.
-Keep product EXACTLY as it looks — same label, same shape. Photo-realistic.
-
-Build a RICH, FESTIVE, ABUNDANT scene around it:
-{scene}
-Props to include: {props_text}
-Add decorative natural elements in ALL corners — botanicals, spices, fabrics, seasonal items.
-Scene should feel ABUNDANT and GENEROUS — every corner filled with beautiful things.
-Warm fairy lights / golden bokeh throughout the background.
-
-═══ LIGHTING ═══
-Multiple warm light sources — fairy lights, candle glow, golden hour.
-Product bathed in warm light. Rich, deep, warm shadows.
-Palette: deep burgundy, forest green, warm gold, cream, cinnamon brown.
-
-═══ TYPOGRAPHY LAYOUT ═══
-
-TITLE «{title}» at TOP — elegant and decorative:
-  → Beautiful SERIF font with character (Playfair, Bodoni, or decorative serif)
-  → Color: deep burgundy, forest green, or rich gold
-  → Slightly decorative feel — premium but warm
+═══ TYPOGRAPHY ═══
+TITLE «{title}» at TOP — large and eye-catching:
+  → Bold serif or decorative display font
+  → Color: charcoal or deep warm brown — maximum readability
+  → Occupies top 20% of image
 
 SUBTITLE «{subtitle}» below title:
-  → Light italic or script font — COMPLETELY different from title font
-  → Color: warm gold or soft cream — creates visual layers
+  → Italic or script font — CONTRASTING style from title
+  → Color: warm gold or soft terracotta
 
-FEATURE CALLOUTS with CURVED ARROWS and VARIED STYLING:
-{feat_text}
-  → Features placed at 4 positions around the product
-  → Thin curved arrows pointing FROM label TO product
-  → VARY the styling: some labels BOLD, some light, some in DIFFERENT COLORS
-  → Use at least 2 different text colors: white + gold, or cream + brown
-  → Some labels larger (key features), some smaller (details)
-  → Small decorative botanical elements near some labels
+FEATURE CALLOUTS with ORGANIC CURVED ARROWS:
+  → 4 labels spread around the product
+  → CURVED arrows (smooth organic curves — like hand-drawn with a pen)
+  → NOT straight lines, NOT rigid — flowing and natural
+  → Arrows: thin, cream or gold colored, with small arrowhead tip
+  → Label typography VARIES:
+    - Mix BOLD and regular weight text
+    - Mix 2 different colors (e.g., dark brown + gold)
+    - Main features slightly LARGER than secondary ones
+  → Small natural decorative elements scattered near some labels
 
-═══ DESIGN QUALITY ═══
-Looks like a premium artisan brand campaign — warm, festive, luxurious.
-ABUNDANT scene with rich props filling every corner.
-Multiple font styles, sizes, and colors create VISUAL DIVERSITY.
-NOT monotonous — each element feels unique and hand-crafted."""
+═══ RESULT ═══
+Bright, warm, festive, ABUNDANT with props and fairy lights.
+Product perfectly centered and brightly lit. Labels clear and readable.
+This is the BEST marketplace card anyone has ever seen."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
