@@ -48,7 +48,9 @@ OWNER_ID           = int(os.getenv("OWNER_ID", "0"))
 ADMIN_ID           = int(os.getenv("ADMIN_ID", str(os.getenv("OWNER_ID", "0"))))
 PORT               = int(os.getenv("PORT", "8080"))
 MINI_APP_URL       = os.getenv("MINI_APP_URL", "https://ai-infografika-bot-clean.vercel.app")
-WH_URL             = os.getenv("WEBHOOK_URL", "")  # set on Railway for webhook mode
+# Auto-detect Railway public domain → forces webhook mode (no polling conflicts)
+_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN") or os.getenv("RAILWAY_STATIC_URL", "")
+WH_URL = os.getenv("WEBHOOK_URL") or (f"https://{_railway_domain}" if _railway_domain else "")
 
 # ── TELEGRAM STARS PRODUCTS ───────────────────────────────────────────────────────
 PRODUCTS = {
@@ -2905,30 +2907,20 @@ async def _async_main():
     await app.initialize()
 
     if WH_URL and _AIOHTTP:
+        # Webhook mode — no polling conflicts, works perfectly on Railway
         await app.bot.delete_webhook(drop_pending_updates=True)
         await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
         await app.start()
-        logging.info("Webhook mode active.")
+        logging.info(f"Webhook mode active: {WH_URL}/{TELEGRAM_BOT_TOKEN}")
     else:
-        # Kill any stale webhook and wait for old instance to release the polling slot
+        # Polling mode (local dev only)
         await app.bot.delete_webhook(drop_pending_updates=True)
-        await asyncio.sleep(4)  # let old Railway instance finish its last getUpdates cycle
         await app.start()
-        for attempt in range(1, 6):
-            try:
-                await app.updater.start_polling(
-                    drop_pending_updates=True,
-                    allowed_updates=["message", "callback_query", "pre_checkout_query"],
-                )
-                logging.info("Polling mode active.")
-                break
-            except Exception as e:
-                if "Conflict" in str(e) and attempt < 5:
-                    wait = attempt * 5
-                    logging.warning(f"Conflict on polling start (attempt {attempt}), retrying in {wait}s…")
-                    await asyncio.sleep(wait)
-                else:
-                    raise
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query", "pre_checkout_query"],
+        )
+        logging.info("Polling mode active.")
 
     if _AIOHTTP:
         web = aiohttp.web.Application()
