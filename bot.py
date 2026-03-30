@@ -3026,9 +3026,8 @@ async def _async_main():
         web.router.add_post("/api/validate_user", api_validate)
         web.router.add_post("/api/buy", api_buy)
         if WH_URL:
-            wh_path = f"/{TELEGRAM_BOT_TOKEN}"
-            web.router.add_post(wh_path, handle_webhook)
-            logging.info(f"Webhook route registered: POST {wh_path}")
+            web.router.add_post("/tgwebhook", handle_webhook)
+            logging.info("Webhook route registered: POST /tgwebhook")
         web.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
 
         runner = aiohttp.web.AppRunner(web)
@@ -3040,9 +3039,9 @@ async def _async_main():
     if WH_URL and _AIOHTTP:
         # Webhook mode — zero conflict regardless of overlapping instances
         await app.bot.delete_webhook(drop_pending_updates=True)
-        await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
+        await app.bot.set_webhook(url=f"{WH_URL}/tgwebhook")
         await app.start()
-        logging.info(f"Webhook mode: {WH_URL}/{TELEGRAM_BOT_TOKEN}")
+        logging.info(f"Webhook mode: {WH_URL}/tgwebhook")
     else:
         # Polling mode — actively wait until old instance releases the lock
         await app.bot.delete_webhook(drop_pending_updates=True)
