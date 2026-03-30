@@ -474,24 +474,24 @@ def analyze_product_image(image_path: str, user_caption: str = "") -> dict:
   ],
   "badge": "ХИТ | НОВИНКА | БЕСТСЕЛЛЕР | ТОП",
   "color_theme": "warm | cool | neutral | dark",
-  "scene_description": "EXTREMELY DETAILED English description of a DARK MOODY lifestyle scene. Dark wooden table or dark surface. Rich props specific to the product. Example for a candle: 'very dark walnut wooden table, scattered dried orange slices, cinnamon sticks, star anise, pine cones, fresh pine branches, abundant warm golden fairy lights bokeh in dark background'. ALWAYS specific, ALWAYS dark and atmospheric — never bright or white.",
+  "scene_description": "EXTREMELY DETAILED English description of the IDEAL lifestyle scene for this product. Choose the mood that fits best — warm/cozy/golden for candles/food/gifts, clean/editorial for cosmetics/beauty, dramatic/dark for perfume/luxury. Example for a candle: 'warm honey-gold wooden table, scattered dried orange slices, cinnamon sticks, star anise, pine cones, fresh fir branches, small white flowers, abundant warm golden fairy lights bokeh in soft background'. ALWAYS specific, ALWAYS premium, 6-8 props.",
   "scene_props": ["prop1 English", "prop2", "prop3", "prop4", "prop5", "prop6", "prop7", "prop8"]
 }}
 {user_hint_block}
 Правила:
 - Пиши по-русски (кроме scene_description и scene_props — ТОЛЬКО на АНГЛИЙСКОМ)
-- features — РОВНО 5 штук, ВСЕ КАПСЛОКОМ, УНИКАЛЬНЫЕ, конкретные
-- Примеры хороших features для свечи: "ГОРИТ 25 ЧАСОВ", "КОКОСОВЫЙ ВОСК", "ДЕРЕВЯННЫЙ ФИТИЛЬ", "ЭФИРНЫЕ МАСЛА", "УЮТНЫЙ АРОМАТ"
+- features — РОВНО 5 штук, ВСЕ КАПСЛОКОМ, УНИКАЛЬНЫЕ, конкретные, макс 24 символа
+- Примеры хороших features для свечи: "ГОРИТ 25 ЧАСОВ", "КОКОСОВЫЙ ВОСК", "ДЕРЕВЯННЫЙ ФИТИЛЬ", "НАТУР. ЭФИРНЫЕ МАСЛА", "УЮТ И ТЕПЛО"
 - НИКОГДА не повторяй одно преимущество
-- scene_description — тёмная атмосферная сцена на английском, 6-8 конкретных реквизитов
+- scene_description — АНГЛИЙСКИЙ, выбери mood который ИДЕАЛЬНО подходит товару
 """
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
             {"type": "text", "text": prompt},
         ]}],
-        max_tokens=600,
+        max_tokens=700,
     )
     raw = re.sub(r"```json|```", "", response.choices[0].message.content.strip()).strip()
     try:
@@ -584,70 +584,77 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
     palette = detect_scent_palette(data)
     style = random.randint(0, 3)
 
-    # Shared core — DARK ATMOSPHERIC SCENE, product as hero, no text overlays
-    CORE_RULES = f"""HIGH-END PRODUCT PHOTOGRAPHY for a premium marketplace listing.
+    # UNIVERSAL RULES — applied in all styles
+    CORE = f"""HIGH-END PRODUCT PHOTOGRAPHY for a premium Russian marketplace listing (Wildberries/OZON).
 
-CRITICAL RULES — NO EXCEPTIONS:
-• ZERO text, ZERO arrows, ZERO labels, ZERO watermarks anywhere in the image
-• Text will be added separately — render ONLY product + environment
-• Photorealistic — NOT illustration, NOT cartoon, NOT flat design
+CRITICAL — NO EXCEPTIONS:
+• ZERO text, ZERO arrows, ZERO labels, ZERO watermarks in the image
+• Photorealistic photography — NOT illustration, NOT cartoon, NOT flat design
+• Text will be added as overlay separately — render ONLY product + environment
 
-PRODUCT (the star of the image):
-• The product from the input photo must appear EXACTLY — same shape, same label text, same proportions
-• Place it CENTERED, large, occupying 50-60% of the image height
-• Position it slightly below center (product bottom at ~85% of image height)
-• Sharp focus, studio-quality rendering, enhanced lighting on the product itself
-• The label on the product must be CLEARLY READABLE — crisp, sharp, legible
+PRODUCT PLACEMENT:
+• The product MUST be DEAD CENTER, occupying 55-65% of the frame
+• Render it EXACTLY as in the input photo — same shape, label text, proportions
+• Sharp studio-quality focus on product, slightly below center (bottom ~85% height)
+• Product is the brightest, sharpest element — everything else supports it
 
-COMPOSITION — leave space for text overlays:
-• Top 25% of image: mostly dark/blurred background — this area gets the title text
-• Left and right edges: clear enough for callout text (not too busy)
-• Center: the product, dominant and sharp
+COMPOSITION — space for text overlays:
+• Top 25%: clear enough for title text (blurred/dark BG preferred here)
+• Left/right edges 20%: not too busy — callout labels go here
+• Center: product dominant and sharp
 
-SCENE & PROPS: {scene}
-SPECIFIC PROPS TO SCATTER: {props_text}
-Scatter these props abundantly in corners and around the product — NOT covering it.
-Every corner filled. Rich, layered, professional lifestyle photography."""
+SCENE: {scene}
+PROPS: {props_text}
+Scatter props abundantly in ALL corners around the product — NOT covering it."""
 
     if style == 0:
-        prompt = f"""{CORE_RULES}
+        prompt = f"""{CORE}
 
-LIGHTING & MOOD: Dark, moody, atmospheric luxury.
-Surface: dark aged wood or very dark walnut table surface.
-Background: very dark with multiple warm golden bokeh circles (out-of-focus fairy lights).
-Color palette: deep chocolate brown, near-black, rich gold bokeh highlights, amber warm tones.
-The product is the brightest element — warm spotlight lighting on it from above-front.
-Mood: high-end artisan brand, luxury candle/cosmetics shoot, Vogue-quality dark editorial."""
+STYLE: Jewel-tone luxury editorial.
+Surface: deep emerald/sapphire/burgundy velvet or dark jewel-colored fabric.
+Background: very dark with multiple warm golden bokeh (out-of-focus fairy lights), layered depth.
+Color palette: deep jewel tones — emerald, sapphire, or burgundy background with rich gold bokeh.
+Product: warm frontal key light + warm golden rim light — glowing, exquisite.
+Props: lush flowers, natural textures (marble, silk, linen), scattered botanicals fill every corner.
+Mood: Vogue product photography, luxury brand campaign, cinematic depth.
+Color grading: rich, saturated, editorial — NOT flat, NOT washed out."""
 
     elif style == 1:
-        prompt = f"""{CORE_RULES}
+        prompt = f"""{CORE}
 
-LIGHTING & MOOD: Dark romantic with warm fairy lights.
-Surface: dark wooden table, slightly worn, warm grain visible.
-Background: very dark with abundant warm fairy light bokeh — many golden circles.
-Color palette: near-black background, deep warm brown, gold bokeh, amber.
-Product lit from front with soft warm light — glowing, inviting.
-Mood: cozy luxury, premium gift, romantic dark atmosphere."""
+STYLE: Modern Scandinavian editorial.
+Surface: creamy linen, light alabaster marble, or soft blush fabric.
+Background: soft creamy/blush depth-of-field blur — clean and luxe, NOT white.
+Color palette: alabaster, blush, dusty rose, sage green, or warm terracotta accents.
+Product: crisp bright studio beauty lighting — perfectly lit, every detail visible.
+Props: editorial lifestyle staging — textured fabrics, fresh flowers, matching lifestyle objects.
+Mood: high-fashion magazine editorial, Scandinavian luxury, minimal but rich in detail.
+Feel: desaturated but warm, intentional — like a premium beauty brand campaign."""
 
     elif style == 2:
-        prompt = f"""{CORE_RULES}
+        prompt = f"""{CORE}
 
-LIGHTING & MOOD: Dark botanical luxury.
-Surface: dark slate or very dark marble with subtle texture.
-Background: deep dark with scattered warm bokeh, botanical elements in shadow.
-Color palette: charcoal, deep forest green accents, gold metallic reflections, warm amber bokeh.
-Soft dramatic lighting illuminates the product from one side.
-Mood: premium spa brand, botanical apothecary, luxury dark editorial."""
+STYLE: Dark cinematic dramatic.
+Surface: deep navy, charcoal, or near-black textured surface.
+Background: very dark with scattered luminous bokeh and subtle mist/smoke effect.
+Color palette: near-black dominant + ONE vibrant accent (neon teal, electric coral, gold, or deep violet).
+Product: dramatic side lighting + subtle colored rim light matching the accent — like a perfume commercial.
+Props: dramatic luxury props — dark roses, metallic objects, dark velvet fabric, mysterious atmosphere.
+Mood: high-end perfume/cosmetics commercial, moody, contrasty, impossible to scroll past.
+Color grading: cinematic, contrasty, deep — like a luxury brand video still."""
 
     else:
-        prompt = f"""{CORE_RULES}
+        prompt = f"""{CORE}
 
-LIGHTING & MOOD: Dark festive premium.
-Surface: dark rustic wood with visible grain texture.
-Background: deep dark background with masses of warm golden bokeh fairy lights.
-Color palette: near-black, deep brown, rich gold, burgundy accents, warm amber.
-Product dramatically lit — warm glow highlighting label and shape.
-Mood: premium holiday gift, luxury seasonal collection, high-end marketplace hero image."""
+STYLE: Warm organic lifestyle.
+Surface: warm honey-wood, terracotta tile, or natural stone with rich grain texture.
+Background: golden hour soft bokeh — honey-gold, amber, warm sunset tones with depth.
+Color palette: rich terracotta, deep sage, warm cream, burnt sienna, dusty rose.
+Product: warm golden overhead light + soft side fill — appetizing, inviting, desirable.
+Props: abundant organic scene — fresh botanicals, fruit slices, fabric textures, natural materials.
+Every corner filled. Scene is lush and abundant, NOT sparse.
+Mood: premium organic/beauty brand, artisan lifestyle editorial, gorgeous Instagram still life.
+Feel: warm, lush, deeply inviting — rich colors, cinematic depth."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -723,9 +730,9 @@ def generate_seo_text(data: dict, user_caption: str = "") -> str:
 Пиши только по-русски. Текст должен быть живым, убедительным и SEO-оптимизированным."""
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=1000,
+        max_tokens=900,
     )
     return response.choices[0].message.content.strip()
 
@@ -897,10 +904,10 @@ def _render_classic(canvas: "Image.Image", title: str, subtitle: str,
     # ALL CAPS для каждого
     feat_list = [f.upper() for f in feat_list]
 
-    f_c = get_font("callout", 46)   # крупный размер как у конкурента
-    MAX_W = 210                      # максимальная ширина текста callout
-    PAD_L = 28                       # отступ от левого края
-    PAD_R = W - 28                   # отступ от правого края
+    f_c = get_font("callout", 44)   # крупный размер как у конкурента
+    MAX_W = 230                      # максимальная ширина текста callout
+    PAD_L = 22                       # отступ от левого края
+    PAD_R = W - 22                   # отступ от правого края
 
     callouts = [
         # 0: левый верх
@@ -962,11 +969,11 @@ def _render_classic(canvas: "Image.Image", title: str, subtitle: str,
                 lx = tx - lw // 2
             _shadow_text(draw, lx, ly, line, f_c, fill=WHITE)
 
-        # Тонкая белая bezier стрелка
+        # Белая bezier стрелка
         draw_curved_arrow(draw,
                           start=(arrow_sx, arrow_sy),
                           end=c["tip"],
-                          color=ARROW_C, width=2)
+                          color=ARROW_C, width=3)
 
     # ── БЕЙДЖ (ХИТ / НОВИНКА) ─────────────────────────────────────────────────
     if badge:
@@ -1644,7 +1651,7 @@ async def handle_support_question(uid: int, question: str, context: ContextTypes
     """ИИ отвечает на вопрос пользователя о боте. Если не знает — эскалирует к владельцу."""
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": """Ты — бот поддержки TOP SELLER (бот для генерации инфографики товаров для маркетплейсов).
 
@@ -1859,7 +1866,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q   = update.callback_query
     uid = q.from_user.id
-    await q.answer()
+    try:
+        await q.answer()
+    except Exception:
+        pass  # query expired — ignore silently
     d   = q.data
 
     if d == "stop_gen":
@@ -2869,7 +2879,13 @@ def _build_app():
 
     async def error_handler(update, context):
         if isinstance(context.error, Conflict):
-            logging.warning("409 Conflict — old instance shutting down")
+            logging.warning("409 Conflict — newer instance detected, stopping polling on this one")
+            # Stop this instance's updater so the new deployment takes over
+            try:
+                if app.updater and app.updater.running:
+                    asyncio.create_task(app.updater.stop())
+            except Exception as stop_err:
+                logging.warning(f"Error stopping updater: {stop_err}")
             return
         logging.exception(context.error)
 
