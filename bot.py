@@ -486,7 +486,7 @@ def analyze_product_image(image_path: str, user_caption: str = "") -> dict:
 - scene_description — АНГЛИЙСКИЙ, выбери mood который ИДЕАЛЬНО подходит товару
 """
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
             {"type": "text", "text": prompt},
@@ -2905,17 +2905,30 @@ async def _async_main():
     await app.initialize()
 
     if WH_URL and _AIOHTTP:
+        await app.bot.delete_webhook(drop_pending_updates=True)
         await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
         await app.start()
         logging.info("Webhook mode active.")
     else:
-        await app.bot.delete_webhook()
+        # Kill any stale webhook and wait for old instance to release the polling slot
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(4)  # let old Railway instance finish its last getUpdates cycle
         await app.start()
-        await app.updater.start_polling(
-            drop_pending_updates=True,
-            allowed_updates=["message", "callback_query", "pre_checkout_query"],
-        )
-        logging.info("Polling mode active.")
+        for attempt in range(1, 6):
+            try:
+                await app.updater.start_polling(
+                    drop_pending_updates=True,
+                    allowed_updates=["message", "callback_query", "pre_checkout_query"],
+                )
+                logging.info("Polling mode active.")
+                break
+            except Exception as e:
+                if "Conflict" in str(e) and attempt < 5:
+                    wait = attempt * 5
+                    logging.warning(f"Conflict on polling start (attempt {attempt}), retrying in {wait}s…")
+                    await asyncio.sleep(wait)
+                else:
+                    raise
 
     if _AIOHTTP:
         web = aiohttp.web.Application()
