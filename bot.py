@@ -1689,7 +1689,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Режим поддержки — если пользователь задал вопрос
     u = get_user(uid)
     if u.get("support_mode") and text not in (
-        "📸 Сгенерировать карточку", "💡 Мои карточки", "🛒 Купить", "🎁 Промокод", "🆘 Поддержка"
+        "📸 Сгенерировать карточку", "💡 Мои карточки", "🛒 Купить", "🎁 Промокод", "🆘 Поддержка",
+        "📝 SEO-текст", "📌 Памятка", "📊 Аналитика", "💰 Мой баланс",
     ):
         u["support_mode"] = False
         # Если это обратная связь по карточке
@@ -2902,26 +2903,10 @@ async def _async_main():
     app = _build_app()
     _bot_app_ref = app
 
-    # Always start aiohttp so Railway health checks pass on port PORT.
-    # Webhook endpoint is added when WH_URL is set; otherwise bot uses polling.
     await app.initialize()
 
-    if WH_URL and _AIOHTTP:
-        # Webhook mode — no polling conflicts, works perfectly on Railway
-        await app.bot.delete_webhook(drop_pending_updates=True)
-        await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
-        await app.start()
-        logging.info(f"Webhook mode active: {WH_URL}/{TELEGRAM_BOT_TOKEN}")
-    else:
-        # Polling mode (local dev only)
-        await app.bot.delete_webhook(drop_pending_updates=True)
-        await app.start()
-        await app.updater.start_polling(
-            drop_pending_updates=True,
-            allowed_updates=["message", "callback_query", "pre_checkout_query"],
-        )
-        logging.info("Polling mode active.")
-
+    # ── Step 1: start HTTP server FIRST so Railway health-check passes ──────────
+    # This signals Railway to send SIGTERM to the OLD instance before we start polling.
     if _AIOHTTP:
         web = aiohttp.web.Application()
 
@@ -2941,6 +2926,25 @@ async def _async_main():
         await runner.setup()
         await aiohttp.web.TCPSite(runner, "0.0.0.0", PORT).start()
         logging.info(f"HTTP server on port {PORT}")
+
+    # ── Step 2: start bot (webhook or polling) ───────────────────────────────────
+    if WH_URL and _AIOHTTP:
+        # Webhook mode — zero conflict regardless of overlapping instances
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        await app.bot.set_webhook(url=f"{WH_URL}/{TELEGRAM_BOT_TOKEN}")
+        await app.start()
+        logging.info(f"Webhook mode: {WH_URL}/{TELEGRAM_BOT_TOKEN}")
+    else:
+        # Polling mode — wait for old instance to die before grabbing updates
+        logging.info("Polling mode — waiting 15s for old instance to exit…")
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(15)   # Railway default SIGTERM grace ≈ 10s
+        await app.start()
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query", "pre_checkout_query"],
+        )
+        logging.info("Polling mode active.")
 
     await asyncio.Event().wait()  # keep alive forever
 
