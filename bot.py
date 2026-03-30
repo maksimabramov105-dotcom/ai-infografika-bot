@@ -47,7 +47,7 @@ CRYPTO_BOT_API     = "https://pay.crypt.bot/api"
 OWNER_ID           = int(os.getenv("OWNER_ID", "0"))
 ADMIN_ID           = int(os.getenv("ADMIN_ID", str(os.getenv("OWNER_ID", "0"))))
 PORT               = int(os.getenv("PORT", "8080"))
-MINI_APP_URL       = os.getenv("MINI_APP_URL", "https://topbestseller.vercel.app")
+MINI_APP_URL       = os.getenv("MINI_APP_URL", "https://ai-infografika-bot-clean.vercel.app")
 WH_URL             = os.getenv("WEBHOOK_URL", "")  # set on Railway for webhook mode
 
 # ── TELEGRAM STARS PRODUCTS ───────────────────────────────────────────────────────
@@ -327,13 +327,13 @@ os.makedirs(FONT_DIR, exist_ok=True)
 # Roboto — основной (полная кириллица), NotoSans — запасной
 _FONT_SOURCES = [
     ("bold",    f"{FONT_DIR}/Roboto-Bold.ttf",
-     "https://github.com/googlefonts/roboto/raw/main/fonts/ttf/Roboto-Bold.ttf"),
+     "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf"),
     ("regular", f"{FONT_DIR}/Roboto-Regular.ttf",
-     "https://github.com/googlefonts/roboto/raw/main/fonts/ttf/Roboto-Regular.ttf"),
+     "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf"),
     ("bold_fallback",    f"{FONT_DIR}/NotoSans-Bold.ttf",
-     "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf"),
+     "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf"),
     ("regular_fallback", f"{FONT_DIR}/NotoSans-Regular.ttf",
-     "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf"),
+     "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf"),
 ]
 _SYSTEM_FONTS = {
     "bold": [
