@@ -999,21 +999,16 @@ def _render_minimal(canvas: "Image.Image", title: str, subtitle: str,
 
 # ── MAKE INFOGRAPHIC — финальная сборка ──────────────────────────────────────────
 def make_infographic(img_path: str, data: dict, scene_bg_path: str | None = None,
-                     template: int = -1) -> str:
+                     template: int = 0) -> str:
     """
     Финальная сборка инфографики. Всегда вызывается поверх AI-сцены.
-    template 0 = Классика (curved arrows, dark-green title)
-    template 1 = Минимализм (feature badges справа)
-    template -1 = случайный выбор
+    template 0 = Классика (curved arrows + callout-текст) — ВСЕГДА
     """
     title    = data.get("title", "Товар")
     subtitle = data.get("subtitle", "")
     features = data.get("features", [])[:4]
     badge    = data.get("badge", "")
     palette  = detect_scent_palette(data)
-
-    if template < 0:
-        template = random.randint(0, 1)
 
     # ── Фон ──────────────────────────────────────────────────────────────────────
     if scene_bg_path and os.path.exists(scene_bg_path):
