@@ -48,13 +48,8 @@ OWNER_ID           = int(os.getenv("OWNER_ID", "0"))
 ADMIN_ID           = int(os.getenv("ADMIN_ID", str(os.getenv("OWNER_ID", "0"))))
 PORT               = int(os.getenv("PORT", "8080"))
 MINI_APP_URL       = os.getenv("MINI_APP_URL", "https://ai-infografika-bot-clean.vercel.app")
-# Webhook URL — Railway domain (no polling conflicts)
-_railway_domain = (
-    os.getenv("RAILWAY_PUBLIC_DOMAIN") or
-    os.getenv("RAILWAY_STATIC_URL") or
-    "ai-infografika-bot-production.up.railway.app"   # hardcoded Railway domain
-)
-WH_URL = os.getenv("WEBHOOK_URL") or f"https://{_railway_domain}"
+# Webhook URL — only if explicitly set via env var; default = polling mode
+WH_URL = os.getenv("WEBHOOK_URL", "")
 
 # ── TELEGRAM STARS PRODUCTS ───────────────────────────────────────────────────────
 PRODUCTS = {
@@ -3037,26 +3032,14 @@ async def _async_main():
 
     # ── Step 2: start bot (webhook or polling) ───────────────────────────────────
     if WH_URL and _AIOHTTP:
-        # Webhook mode — zero conflict regardless of overlapping instances
+        # Webhook mode — only when WEBHOOK_URL env var is explicitly set
         await app.bot.delete_webhook(drop_pending_updates=True)
         await app.bot.set_webhook(url=f"{WH_URL}/tgwebhook")
         await app.start()
         logging.info(f"Webhook mode: {WH_URL}/tgwebhook")
     else:
-        # Polling mode — actively wait until old instance releases the lock
+        # Polling mode (default)
         await app.bot.delete_webhook(drop_pending_updates=True)
-        logging.info("Waiting for old instance to release polling lock…")
-        for attempt in range(40):   # up to ~120s
-            try:
-                await app.bot.get_updates(offset=-1, limit=1, timeout=2, allowed_updates=[])
-                logging.info(f"Polling lock acquired after {attempt * 3}s")
-                break
-            except Exception as e:
-                if "Conflict" in str(e):
-                    logging.warning(f"  still conflicted (attempt {attempt+1}/40), waiting 3s…")
-                    await asyncio.sleep(3)
-                else:
-                    break  # some other error — proceed anyway
         await app.start()
         await app.updater.start_polling(
             drop_pending_updates=True,
