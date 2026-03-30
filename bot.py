@@ -568,104 +568,214 @@ def detect_scent_palette(data: dict) -> dict:
 # ── ГЕНЕРАЦИЯ ПОЛНОЙ ИНФОГРАФИКИ ЧЕРЕЗ GPT-IMAGE-1 ───────────────────────────────
 def generate_full_infographic(image_path: str, data: dict, user_caption: str = "") -> str | None:
     """
-    Генерирует ПОЛНУЮ готовую инфографику через gpt-image-1:
-    - Передаёт фото товара как input image
-    - ИИ создаёт сцену с товаром + красивый текст + дизайн
+    Генерирует ПОЛНУЮ готовую инфографику через gpt-image-1.
+    ИИ рисует всё: сцену, заголовок, подзаголовок, callout-стрелки.
     Возвращает путь к файлу или None.
     """
     title    = data.get("title", "Товар")
     subtitle = data.get("subtitle", "")
     features = data.get("features", [])[:4]
-    badge    = data.get("badge", "")
     scene    = data.get("scene_description", "luxury product photography, warm bokeh, elegant")
-    props    = data.get("scene_props", [])
 
-    feat_text = "\n".join(f"  «{f}»" for f in features)
-    props_text = ", ".join(props) if props else "natural lifestyle props matching this product"
+    feat_text = "\n".join(f"• {f}" for f in features)
 
-    # Если пользователь указал пожелания — добавляем к сцене
     if user_caption:
-        scene = f"{user_caption}. {scene}"
+        scene = user_caption
 
-    palette = detect_scent_palette(data)
     style = random.randint(0, 3)
 
-    # UNIVERSAL RULES — applied in all styles
-    CORE = f"""HIGH-END PRODUCT PHOTOGRAPHY for a premium Russian marketplace listing (Wildberries/OZON).
-
-CRITICAL — NO EXCEPTIONS:
-• ZERO text, ZERO arrows, ZERO labels, ZERO watermarks in the image
-• Photorealistic photography — NOT illustration, NOT cartoon, NOT flat design
-• Text will be added as overlay separately — render ONLY product + environment
-
-PRODUCT PLACEMENT:
-• The product MUST be DEAD CENTER, occupying 55-65% of the frame
-• Render it EXACTLY as in the input photo — same shape, label text, proportions
-• Sharp studio-quality focus on product, slightly below center (bottom ~85% height)
-• Product is the brightest, sharpest element — everything else supports it
-
-COMPOSITION — space for text overlays:
-• Top 25%: clear enough for title text (blurred/dark BG preferred here)
-• Left/right edges 20%: not too busy — callout labels go here
-• Center: product dominant and sharp
-
-SCENE: {scene}
-PROPS: {props_text}
-Scatter props abundantly in ALL corners around the product — NOT covering it."""
+    TEXT_ACCURACY_RULES = f"""⚠️ ABSOLUTE TEXT ACCURACY LAW — OBEY WITHOUT EXCEPTION ⚠️
+TITLE must be printed EXACTLY as: «{title}»
+SUBTITLE must be printed EXACTLY as: «{subtitle}»
+Features must be printed EXACTLY as given below.
+• Copy every letter, space, and punctuation CHARACTER BY CHARACTER.
+• DO NOT add, remove, or change even ONE letter.
+• DO NOT invent, translate, or rephrase any word.
+• «{title}» — memorize this spelling. Reproduce it perfectly.
+• NEVER render readable text on the product itself or its label.
+  If the product has a label, render it blurred/unreadable — all text goes in the overlay callouts ONLY.
+• Minimum 60px safe margin from ALL edges — no text cut off.
+• Every callout label must be COMPLETE — never cropped by the frame border.
+"""
 
     if style == 0:
-        prompt = f"""{CORE}
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create a STUNNING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-STYLE: Jewel-tone luxury editorial.
-Surface: deep emerald/sapphire/burgundy velvet or dark jewel-colored fabric.
-Background: very dark with multiple warm golden bokeh (out-of-focus fairy lights), layered depth.
-Color palette: deep jewel tones — emerald, sapphire, or burgundy background with rich gold bokeh.
-Product: warm frontal key light + warm golden rim light — glowing, exquisite.
-Props: lush flowers, natural textures (marble, silk, linen), scattered botanicals fill every corner.
-Mood: Vogue product photography, luxury brand campaign, cinematic depth.
-Color grading: rich, saturated, editorial — NOT flat, NOT washed out."""
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+The product from the photo MUST be placed DEAD CENTER of the image.
+It must occupy 60% of the total frame — large, dominant, impossible to miss.
+Render it photo-realistically, exactly as it looks in the input image.
+Surround it with a LUSH lifestyle scene: fresh flowers, natural textures (marble, wood, silk, linen),
+scattered botanicals or ingredients relevant to the product. Scene fills all corners.
+
+═══ LIGHTING & COLOR ═══
+• Primary palette: deep jewel tones — emerald, sapphire, burgundy, or deep amber — in the background
+• Product lit with soft frontal key light + warm golden rim light
+• Background: rich bokeh with color depth, NOT flat. Layer multiple light sources.
+• Color grading: rich, saturated, editorial — think Vogue product photography
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — Massive, top-center, bold display font (like Playfair Display or Cormorant Garamond)
+  — Color: bright gold (#FFD700) or luminous ivory with golden outline
+  — Letter-spacing: slightly wide, elegant
+
+SUBTITLE «{subtitle}»:
+  — Italic serif or thin elegant sans, below title
+  — Color: soft champagne or rose gold
+
+FEATURE CALLOUTS with CURVED ARROW LINES pointing to product:
+{feat_text}
+  — Place labels at 4 corners (top-left, top-right, bottom-left, bottom-right)
+  — Each label: clean white sans-serif text on semi-transparent dark pill shape
+  — Arrows: thin, elegant, slightly curved white/gold lines with small arrowhead tip
+  — Arrows point FROM label TOWARD the relevant part of the product
+
+═══ OVERALL ═══
+RESULT: Museum-quality product card. Looks like a campaign for a luxury Russian brand.
+Rich colors, cinematic depth, gorgeous typography. NOT flat, NOT dull, NOT generic.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     elif style == 1:
-        prompt = f"""{CORE}
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create a BREATHTAKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-STYLE: Modern Scandinavian editorial.
-Surface: creamy linen, light alabaster marble, or soft blush fabric.
-Background: soft creamy/blush depth-of-field blur — clean and luxe, NOT white.
-Color palette: alabaster, blush, dusty rose, sage green, or warm terracotta accents.
-Product: crisp bright studio beauty lighting — perfectly lit, every detail visible.
-Props: editorial lifestyle staging — textured fabrics, fresh flowers, matching lifestyle objects.
-Mood: high-fashion magazine editorial, Scandinavian luxury, minimal but rich in detail.
-Feel: desaturated but warm, intentional — like a premium beauty brand campaign."""
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+Product from the photo: PERFECTLY CENTERED, taking up 60% of the frame.
+Sharp focus on product, background has natural depth-of-field blur.
+Around product: editorial lifestyle staging — textured fabrics, flowers, matching props.
+
+═══ LIGHTING & COLOR ═══
+• Background: soft, creamy, desaturated (linen, alabaster, blush) — clean and luxe
+• Product: crisp, bright, perfectly lit — studio beauty lighting
+• Accents: dusty rose, sage green, warm terracotta, or soft cobalt as accent colors
+• Feel: high-fashion magazine editorial, Scandinavian luxury
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — Top area, large bold condensed sans-serif (like Neue Haas Grotesk or Futura Bold)
+  — Color: rich black or deep charcoal with thin colored accent line underneath
+  — Very confident, clean, architectural
+
+SUBTITLE «{subtitle}»:
+  — Light weight, elegant, below title. Color: medium gray or muted accent
+
+FEATURES as FLOATING BADGE LABELS (NO arrows):
+{feat_text}
+  — Each feature: small rounded rectangle pill, positioned AROUND the centered product
+  — Pills: matte dark background (charcoal or deep navy) with bright white text
+  — Small accent dot or icon before each text
+  — Placed asymmetrically for visual rhythm: some higher, some lower
+
+═══ OVERALL ═══
+Aesthetic: modern Scandinavian luxury, minimal but rich in detail.
+Typography is the hero. Colors are muted but intentional. NOT sterile — textured and warm.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     elif style == 2:
-        prompt = f"""{CORE}
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create a VISUALLY STRIKING premium product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-STYLE: Dark cinematic dramatic.
-Surface: deep navy, charcoal, or near-black textured surface.
-Background: very dark with scattered luminous bokeh and subtle mist/smoke effect.
-Color palette: near-black dominant + ONE vibrant accent (neon teal, electric coral, gold, or deep violet).
-Product: dramatic side lighting + subtle colored rim light matching the accent — like a perfume commercial.
-Props: dramatic luxury props — dark roses, metallic objects, dark velvet fabric, mysterious atmosphere.
-Mood: high-end perfume/cosmetics commercial, moody, contrasty, impossible to scroll past.
-Color grading: cinematic, contrasty, deep — like a luxury brand video still."""
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+Product from the photo: DEAD CENTER of the image, occupying 60% of the frame.
+Bold, dramatic, heroic presence. Nothing competes with it visually.
+Scene: moody and cinematic — deep shadows, dramatic props, rich textures behind and around product.
+
+═══ LIGHTING & COLOR ═══
+• Dominant palette: DARK — deep navy, charcoal, near-black background
+• Vivid accent: choose ONE strong accent color (neon teal, electric coral, gold, or violet)
+• Product lit dramatically from one side + subtle colored rim light matching the accent
+• Background: scattered points of light (bokeh), smoke or mist effect, luxury product vibe
+• Color grading: moody, contrasty, cinematic — like a perfume commercial
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — HUGE, dominant, top center
+  — White or vibrant accent color
+  — Bold display font with strong presence — condensed or wide, not regular weight
+
+SUBTITLE «{subtitle}»:
+  — Elegant thin font below title, in accent color or light silver
+
+FEATURES — annotated with ELEGANT POINTER LINES:
+{feat_text}
+  — Feature text in glowing/bright labels connected to product by thin luminous lines
+  — Labels glow subtly matching the accent color
+  — Spread evenly around the product
+
+═══ OVERALL ═══
+Final look: A bold, dark, dramatic luxury product card. Like a high-end perfume or tech launch campaign.
+Extremely visual, premium, impossible to scroll past.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     else:
-        prompt = f"""{CORE}
+        prompt = f"""{TEXT_ACCURACY_RULES}
+Create an EXQUISITE warm lifestyle product infographic for Russian marketplace (Wildberries/OZON). 1080x1080px square.
 
-STYLE: Warm organic lifestyle.
-Surface: warm honey-wood, terracotta tile, or natural stone with rich grain texture.
-Background: golden hour soft bokeh — honey-gold, amber, warm sunset tones with depth.
-Color palette: rich terracotta, deep sage, warm cream, burnt sienna, dusty rose.
-Product: warm golden overhead light + soft side fill — appetizing, inviting, desirable.
-Props: abundant organic scene — fresh botanicals, fruit slices, fabric textures, natural materials.
-Every corner filled. Scene is lush and abundant, NOT sparse.
-Mood: premium organic/beauty brand, artisan lifestyle editorial, gorgeous Instagram still life.
-Feel: warm, lush, deeply inviting — rich colors, cinematic depth."""
+🎯 SCENE: «{scene}» — render this EXACTLY and LITERALLY. This is absolute law.
+
+═══ PRODUCT PLACEMENT (CRITICAL) ═══
+Product from the photo: CENTERED, occupying 60% of the frame — large, beautiful, in perfect focus.
+The product should look appetizing, inviting, desirable.
+Around it: an abundant, lush organic scene — fresh botanicals, fruit slices, fabric textures,
+natural materials (wood, stone, terra cotta) that perfectly match the product category.
+EVERY CORNER filled with beautiful lifestyle props. Scene is abundant, NOT sparse.
+
+═══ LIGHTING & COLOR ═══
+• Warm golden hour lighting — honey-gold, amber, sunset tones
+• Palette: rich terracotta, deep sage, warm cream, burnt sienna, dusty rose
+• Multiple warm light sources: top-down golden light + soft side fill
+• Deep warm shadows that add dimension, not darkness
+
+═══ TYPOGRAPHY — ALL TEXT IN RUSSIAN ═══
+TITLE «{title}»:
+  — Top of image, large elegant serif (like Garamond or Bodoni)
+  — Color: deep warm terracotta or rich burgundy
+
+SUBTITLE «{subtitle}»:
+  — Script or italic serif, slightly smaller. Color: muted gold or warm taupe
+
+FEATURES:
+{feat_text}
+  — Each feature placed near edges, framed by small decorative botanical element
+  — Text in warm charcoal or deep brown — warm, organic, hand-crafted feel
+  — No arrows — features naturally integrated into the scene layout
+
+═══ OVERALL ═══
+Final look: An artisan lifestyle editorial. Like a premium organic/beauty brand campaign.
+Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, abundant scene.
+
+═══ TEXT RENDERING RULES (CRITICAL) ═══
+• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
+• Minimum 60px margin from all edges — text never bleeds off frame
+• Each callout label must be COMPLETE — never cut by image border
+• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
     try:
-        # gpt-image-1 с input image
         with open(image_path, "rb") as img_file:
             result = client.images.edit(
                 model="gpt-image-1",
@@ -685,7 +795,6 @@ Feel: warm, lush, deeply inviting — rich colors, cinematic depth."""
     except Exception as e:
         logging.warning(f"gpt-image-1 edit failed: {e}")
 
-    # Fallback: gpt-image-1 generate (без input image, но с описанием)
     try:
         result = client.images.generate(
             model="gpt-image-1",
@@ -1581,24 +1690,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.edit_text("⛔ Генерация остановлена.")
                 return
 
-            await msg.edit_text("🎨 Генерирую сцену (20-30 сек)...", reply_markup=stop_kb)
-            scene_path = generate_full_infographic(img_path, data, user_caption=user_caption)
+            await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...", reply_markup=stop_kb)
+            out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
 
             if uid in cancelled_users:
                 cancelled_users.discard(uid)
                 await msg.edit_text("⛔ Генерация остановлена.")
                 return
-
-            # Всегда применяем PIL-постобработку: заголовок + bezier стрелки + callouts
-            await msg.edit_text("✏️ Добавляю типографику и стрелки...", reply_markup=stop_kb)
-            out_path = make_infographic(img_path, data, scene_bg_path=scene_path)
-
-            # Удаляем промежуточную AI-сцену
-            if scene_path and scene_path != out_path:
-                try:
-                    os.remove(scene_path)
-                except OSError:
-                    pass
 
             if not out_path:
                 await msg.edit_text("😔 Не удалось сгенерировать. Попробуй ещё раз.")
@@ -2855,9 +2953,14 @@ async def handle_options(request: aiohttp.web.Request) -> aiohttp.web.Response:
 
 
 async def handle_webhook(request: aiohttp.web.Request) -> aiohttp.web.Response:
-    data = await request.json()
-    update = Update.de_json(data, _bot_app_ref.bot)
-    await _bot_app_ref.process_update(update)
+    try:
+        data = await request.json()
+        logging.info(f"Webhook update received: {list(data.keys())}")
+        update = Update.de_json(data, _bot_app_ref.bot)
+        # Fire-and-forget — return 200 immediately so Telegram doesn't retry
+        asyncio.create_task(_bot_app_ref.process_update(update))
+    except Exception as e:
+        logging.error(f"Webhook handler error: {e}", exc_info=True)
     return aiohttp.web.Response(status=200)
 
 
@@ -2923,7 +3026,9 @@ async def _async_main():
         web.router.add_post("/api/validate_user", api_validate)
         web.router.add_post("/api/buy", api_buy)
         if WH_URL:
-            web.router.add_post(f"/{TELEGRAM_BOT_TOKEN}", handle_webhook)
+            wh_path = f"/{TELEGRAM_BOT_TOKEN}"
+            web.router.add_post(wh_path, handle_webhook)
+            logging.info(f"Webhook route registered: POST {wh_path}")
         web.router.add_route("OPTIONS", "/{path_info:.*}", handle_options)
 
         runner = aiohttp.web.AppRunner(web)
