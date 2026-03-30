@@ -2935,10 +2935,20 @@ async def _async_main():
         await app.start()
         logging.info(f"Webhook mode: {WH_URL}/{TELEGRAM_BOT_TOKEN}")
     else:
-        # Polling mode — wait for old instance to die before grabbing updates
-        logging.info("Polling mode — waiting 15s for old instance to exit…")
+        # Polling mode — actively wait until old instance releases the lock
         await app.bot.delete_webhook(drop_pending_updates=True)
-        await asyncio.sleep(15)   # Railway default SIGTERM grace ≈ 10s
+        logging.info("Waiting for old instance to release polling lock…")
+        for attempt in range(40):   # up to ~120s
+            try:
+                await app.bot.get_updates(offset=-1, limit=1, timeout=2, allowed_updates=[])
+                logging.info(f"Polling lock acquired after {attempt * 3}s")
+                break
+            except Exception as e:
+                if "Conflict" in str(e):
+                    logging.warning(f"  still conflicted (attempt {attempt+1}/40), waiting 3s…")
+                    await asyncio.sleep(3)
+                else:
+                    break  # some other error — proceed anyway
         await app.start()
         await app.updater.start_polling(
             drop_pending_updates=True,
