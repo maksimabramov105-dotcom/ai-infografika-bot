@@ -48,9 +48,13 @@ OWNER_ID           = int(os.getenv("OWNER_ID", "0"))
 ADMIN_ID           = int(os.getenv("ADMIN_ID", str(os.getenv("OWNER_ID", "0"))))
 PORT               = int(os.getenv("PORT", "8080"))
 MINI_APP_URL       = os.getenv("MINI_APP_URL", "https://ai-infografika-bot-clean.vercel.app")
-# Auto-detect Railway public domain → forces webhook mode (no polling conflicts)
-_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN") or os.getenv("RAILWAY_STATIC_URL", "")
-WH_URL = os.getenv("WEBHOOK_URL") or (f"https://{_railway_domain}" if _railway_domain else "")
+# Webhook URL — Railway domain (no polling conflicts)
+_railway_domain = (
+    os.getenv("RAILWAY_PUBLIC_DOMAIN") or
+    os.getenv("RAILWAY_STATIC_URL") or
+    "ai-infografika-bot-production.up.railway.app"   # hardcoded Railway domain
+)
+WH_URL = os.getenv("WEBHOOK_URL") or f"https://{_railway_domain}"
 
 # ── TELEGRAM STARS PRODUCTS ───────────────────────────────────────────────────────
 PRODUCTS = {
