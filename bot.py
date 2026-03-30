@@ -326,24 +326,45 @@ os.makedirs(FONT_DIR, exist_ok=True)
 
 # Шрифты: Playfair Display (serif заголовки), Montserrat (callouts), Roboto/NotoSans (fallback)
 _FONT_SOURCES = [
-    ("serif_bold",   f"{FONT_DIR}/PlayfairDisplay-Bold.ttf",
-     "https://github.com/google/fonts/raw/main/ofl/playfairdisplay/static/PlayfairDisplay-Bold.ttf"),
-    ("callout_bold", f"{FONT_DIR}/Montserrat-Bold.ttf",
-     "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Bold.ttf"),
-    ("callout_semi", f"{FONT_DIR}/Montserrat-SemiBold.ttf",
-     "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-SemiBold.ttf"),
-    ("bold",    f"{FONT_DIR}/Roboto-Bold.ttf",
-     "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf"),
-    ("regular", f"{FONT_DIR}/Roboto-Regular.ttf",
-     "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf"),
-    ("bold_fallback",    f"{FONT_DIR}/NotoSans-Bold.ttf",
-     "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf"),
-    ("regular_fallback", f"{FONT_DIR}/NotoSans-Regular.ttf",
-     "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf"),
+    # Playfair Display (multiple mirrors — Google Fonts repo reorganized static fonts)
+    ("serif_bold",   f"{FONT_DIR}/PlayfairDisplay-Bold.ttf", [
+        "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/playfairdisplay/static/PlayfairDisplay-Bold.ttf",
+        "https://github.com/google/fonts/raw/main/ofl/playfairdisplay/static/PlayfairDisplay-Bold.ttf",
+        "https://cdn.jsdelivr.net/gh/clauseggers/Playfair-Display@master/fonts/PlayfairDisplay-Bold.ttf",
+    ]),
+    # NotoSerif Bold — надёжный serif с кириллицей (тот же источник что NotoSans)
+    ("serif_noto",   f"{FONT_DIR}/NotoSerif-Bold.ttf", [
+        "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSerif/NotoSerif-Bold.ttf",
+    ]),
+    # Montserrat Bold (multiple mirrors)
+    ("callout_bold", f"{FONT_DIR}/Montserrat-Bold.ttf", [
+        "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-Bold.ttf",
+        "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Bold.ttf",
+        "https://cdn.jsdelivr.net/gh/JulietaUla/Montserrat@master/fonts/ttf/Montserrat-Bold.ttf",
+    ]),
+    # Montserrat SemiBold
+    ("callout_semi", f"{FONT_DIR}/Montserrat-SemiBold.ttf", [
+        "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-SemiBold.ttf",
+        "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-SemiBold.ttf",
+        "https://cdn.jsdelivr.net/gh/JulietaUla/Montserrat@master/fonts/ttf/Montserrat-SemiBold.ttf",
+    ]),
+    ("bold",    f"{FONT_DIR}/Roboto-Bold.ttf", [
+        "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf",
+    ]),
+    ("regular", f"{FONT_DIR}/Roboto-Regular.ttf", [
+        "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf",
+    ]),
+    ("bold_fallback",    f"{FONT_DIR}/NotoSans-Bold.ttf", [
+        "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf",
+    ]),
+    ("regular_fallback", f"{FONT_DIR}/NotoSans-Regular.ttf", [
+        "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
+    ]),
 ]
 _SYSTEM_FONTS = {
     "serif": [
         f"{FONT_DIR}/PlayfairDisplay-Bold.ttf",
+        f"{FONT_DIR}/NotoSerif-Bold.ttf",
         f"{FONT_DIR}/Roboto-Bold.ttf",
         f"{FONT_DIR}/NotoSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -387,7 +408,7 @@ def _is_valid_font(path: str) -> bool:
 
 
 def download_fonts():
-    for name, path, url in _FONT_SOURCES:
+    for name, path, urls in _FONT_SOURCES:
         # Скачиваем если файл отсутствует или битый
         if os.path.exists(path) and _is_valid_font(path):
             logging.info(f"Font OK: {path}")
@@ -395,15 +416,23 @@ def download_fonts():
         # Удаляем битый файл если есть
         if os.path.exists(path):
             os.remove(path)
-        try:
-            urllib.request.urlretrieve(url, path)
-            if _is_valid_font(path):
-                logging.info(f"Font downloaded and verified: {path}")
-            else:
-                os.remove(path)
-                logging.warning(f"Font downloaded but failed Cyrillic check: {path}")
-        except Exception as e:
-            logging.warning(f"Font download failed ({name}): {e}")
+        # Пробуем все URL по очереди
+        success = False
+        for url in urls:
+            try:
+                urllib.request.urlretrieve(url, path)
+                if _is_valid_font(path):
+                    logging.info(f"Font downloaded and verified: {path} (from {url})")
+                    success = True
+                    break
+                else:
+                    if os.path.exists(path):
+                        os.remove(path)
+                    logging.warning(f"Font downloaded but failed Cyrillic check: {path}")
+            except Exception as e:
+                logging.warning(f"Font download failed ({name}) from {url}: {e}")
+        if not success:
+            logging.warning(f"All URLs failed for font: {name}")
 
 
 def get_font(style: str, size: int) -> ImageFont.FreeTypeFont:
