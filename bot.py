@@ -591,6 +591,17 @@ Features must be printed EXACTLY as given below.
   If the product has a label, render it blurred/unreadable — all text goes in the overlay callouts ONLY.
 • Minimum 60px safe margin from ALL edges — no text cut off.
 • Every callout label must be COMPLETE — never cropped by the frame border.
+
+⚠️ ULTRA-PHOTOREALISTIC PRODUCT LAW ⚠️
+The product MUST look like a REAL PHOTOGRAPH — not an illustration, not a 3D render, not a stylized image.
+• Preserve EXACTLY: shape, size, proportions, materials, surface texture, transparency from the input photo
+• Glass = real borosilicate glass with natural reflections, highlights, micro-scratches, depth
+• Wax = creamy, textured, real candle wax surface — not flat or plastic
+• Fabric = real textile weave, natural folds, thread detail visible
+• Metal = real metallic reflections, brushed or polished finish
+• The product must look like it was shot by a professional product photographer in a luxury studio
+• ZERO cartoon look, ZERO flat illustration, ZERO artificial plastic sheen
+• Depth of field: product in SHARP focus, background beautifully blurred
 """
 
     if style == 0:
@@ -602,7 +613,7 @@ Create a STUNNING premium product infographic for Russian marketplace (Wildberri
 ═══ PRODUCT PLACEMENT (CRITICAL) ═══
 The product from the photo MUST be placed DEAD CENTER of the image.
 It must occupy 60% of the total frame — large, dominant, impossible to miss.
-Render it photo-realistically, exactly as it looks in the input image.
+Render it as a REAL PRODUCT PHOTO — exact same materials, textures, transparency and physical detail as the input image. Zero artistic stylization on the product itself.
 Surround it with a LUSH lifestyle scene: fresh flowers, natural textures (marble, wood, silk, linen),
 scattered botanicals or ingredients relevant to the product. Scene fills all corners.
 
