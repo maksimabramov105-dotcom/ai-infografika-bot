@@ -324,8 +324,14 @@ async def notify_owner(context: ContextTypes.DEFAULT_TYPE, text: str):
 FONT_DIR = "/tmp/fonts"
 os.makedirs(FONT_DIR, exist_ok=True)
 
-# Roboto — основной (полная кириллица), NotoSans — запасной
+# Шрифты: Playfair Display (serif заголовки), Montserrat (callouts), Roboto/NotoSans (fallback)
 _FONT_SOURCES = [
+    ("serif_bold",   f"{FONT_DIR}/PlayfairDisplay-Bold.ttf",
+     "https://github.com/google/fonts/raw/main/ofl/playfairdisplay/static/PlayfairDisplay-Bold.ttf"),
+    ("callout_bold", f"{FONT_DIR}/Montserrat-Bold.ttf",
+     "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Bold.ttf"),
+    ("callout_semi", f"{FONT_DIR}/Montserrat-SemiBold.ttf",
+     "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-SemiBold.ttf"),
     ("bold",    f"{FONT_DIR}/Roboto-Bold.ttf",
      "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf"),
     ("regular", f"{FONT_DIR}/Roboto-Regular.ttf",
@@ -336,6 +342,21 @@ _FONT_SOURCES = [
      "https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf"),
 ]
 _SYSTEM_FONTS = {
+    "serif": [
+        f"{FONT_DIR}/PlayfairDisplay-Bold.ttf",
+        f"{FONT_DIR}/Roboto-Bold.ttf",
+        f"{FONT_DIR}/NotoSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    ],
+    "callout": [
+        f"{FONT_DIR}/Montserrat-Bold.ttf",
+        f"{FONT_DIR}/Montserrat-SemiBold.ttf",
+        f"{FONT_DIR}/Roboto-Bold.ttf",
+        f"{FONT_DIR}/NotoSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ],
     "bold": [
         f"{FONT_DIR}/Roboto-Bold.ttf",
         f"{FONT_DIR}/NotoSans-Bold.ttf",
@@ -456,6 +477,60 @@ def analyze_product_image(image_path: str, user_caption: str = "") -> dict:
         }
 
 
+# ── ПАЛИТРЫ И РЕКВИЗИТ ПО АРОМАТУ / ТИПУ ТОВАРА ─────────────────────────────────
+SCENT_PALETTES = {
+    "orange_cinnamon": {
+        "bg": "#F5DEB3", "title": "#1B3A2D", "arrow": "#3D2B1F", "accent": "#C8500A",
+        "props": "dried orange slices, cinnamon sticks, star anise, pine branches, pine cones, warm fairy lights",
+        "keywords": ["апельсин", "корица", "orange", "cinnamon", "пряности", "пряник"],
+    },
+    "lavender": {
+        "bg": "#EDE0F5", "title": "#2D1B4E", "arrow": "#4A2C6B", "accent": "#8B5CF6",
+        "props": "lavender sprigs, purple wildflowers, soft linen cloth, dried herbs, ceramic vase",
+        "keywords": ["лаванда", "lavender", "фиолетов", "herb"],
+    },
+    "vanilla": {
+        "bg": "#FFF8E7", "title": "#3D2B00", "arrow": "#6B4423", "accent": "#C49A3C",
+        "props": "vanilla pods, honey drizzle, cream ribbons, gold spoon, beeswax, warm light",
+        "keywords": ["ваниль", "vanilla", "мёд", "honey", "молоко"],
+    },
+    "floral": {
+        "bg": "#FFF0F5", "title": "#4A1942", "arrow": "#8B2252", "accent": "#E91E8C",
+        "props": "fresh roses, peony petals, eucalyptus, white linen, glass vase, gold scissors",
+        "keywords": ["роза", "пион", "пион", "роз", "цветок", "floral", "rose", "peony"],
+    },
+    "forest": {
+        "bg": "#E8F5E9", "title": "#1B3A2D", "arrow": "#2D5A3D", "accent": "#388E3C",
+        "props": "pine cones, moss, fir branches, cedar bark, forest mushrooms, morning dew drops",
+        "keywords": ["хвоя", "лес", "кедр", "сосна", "pine", "cedar", "forest", "мох"],
+    },
+    "citrus": {
+        "bg": "#FFFDE7", "title": "#3E2700", "arrow": "#E65100", "accent": "#FF8F00",
+        "props": "lemon slices, lime wedges, grapefruit halves, orange zest, mint leaves, sunny light",
+        "keywords": ["лимон", "лайм", "грейпфрут", "цитрус", "lemon", "lime", "citrus"],
+    },
+    "default": {
+        "bg": "#FAF6F0", "title": "#1B3A2D", "arrow": "#3D2B1F", "accent": "#C49A3C",
+        "props": "natural wooden surface, soft fabric, warm bokeh lights, elegant lifestyle props",
+        "keywords": [],
+    },
+}
+
+
+def detect_scent_palette(data: dict) -> dict:
+    """Определяет палитру по заголовку, подзаголовку и описанию сцены."""
+    haystack = " ".join([
+        data.get("title", ""), data.get("subtitle", ""),
+        data.get("scene_description", ""), " ".join(data.get("scene_props", [])),
+    ]).lower()
+    for key, palette in SCENT_PALETTES.items():
+        if key == "default":
+            continue
+        if any(kw in haystack for kw in palette["keywords"]):
+            return palette
+    return SCENT_PALETTES["default"]
+
+
 # ── ГЕНЕРАЦИЯ ПОЛНОЙ ИНФОГРАФИКИ ЧЕРЕЗ GPT-IMAGE-1 ───────────────────────────────
 def generate_full_infographic(image_path: str, data: dict, user_caption: str = "") -> str | None:
     """
@@ -478,167 +553,72 @@ def generate_full_infographic(image_path: str, data: dict, user_caption: str = "
     if user_caption:
         scene = f"{user_caption}. {scene}"
 
+    palette = detect_scent_palette(data)
     style = random.randint(0, 3)
 
-    # Shared core that ALL styles use
-    CORE_RULES = f"""═══ ABSOLUTE RULES ═══
-• ALL text in Russian Cyrillic — EXACT spelling as given, letter by letter
-• Product label stays INTACT and READABLE — do NOT blur or distort it
-• ALL text FULLY VISIBLE — 60px margin from edges, nothing cropped
-• TITLE: «{title}» | SUBTITLE: «{subtitle}»
-• Features: {feat_text}
+    # Shared core — CLEAN SCENE, no text overlays (text added by PIL post-processing)
+    CORE_RULES = f"""═══ CRITICAL: CLEAN PRODUCT SCENE — NO TEXT, NO ARROWS ═══
+• ZERO text overlays, annotations, arrows, labels, watermarks — NONE AT ALL
+• This image will have text added later — render ONLY the product + scene
+• Product from input photo: CENTERED, occupying 55-65% of the frame height
+• Render PHOTOREALISTIC — exact same shape, label, colors as the input product
+• Style: HIGH-END PRODUCT PHOTOGRAPHY — NOT illustration, NOT cartoon, NOT vector
 
-═══ PRODUCT PLACEMENT (CRITICAL) ═══
-Product from input photo: CENTERED, occupying 55-60% of the frame.
-Render photo-realistically — same shape, same label, same colors as input.
+═══ PRODUCT PLACEMENT ═══
 Product is the HERO — large, dominant, in sharp focus, perfectly lit.
+Center it with room above (25% of image) for title text to be added later.
+Product label must remain INTACT and readable.
 
-═══ SCENE (CRITICAL — FILL EVERY CORNER) ═══
+═══ SCENE (FILL EVERY CORNER) ═══
 {scene}
-SPECIFIC PROPS TO RENDER: {props_text}
-Scatter these props ABUNDANTLY around the product — on the surface, in corners, behind it.
-Scene must be RICH and FULL — no empty spaces. Like a styled Instagram flat lay photo.
+SPECIFIC PROPS: {props_text}
+Scatter props ABUNDANTLY — on the surface, in corners, behind product.
+NO empty spaces. Rich, full, styled like a premium Instagram flat lay.
 
-═══ LIGHTING (CRITICAL — BRIGHT AND WARM) ═══
-• Overall image must be BRIGHT, WARM, WELL-LIT — NOT dark, NOT moody, NOT dim
+═══ LIGHTING: BRIGHT AND WARM ═══
+• BRIGHT, WARM, WELL-LIT — NOT dark, NOT moody, NOT dim
 • Warm golden-hour lighting — honey tones, soft warm highlights everywhere
-• Fairy lights / warm circular bokeh in the background — LOTS of them
-• Product brightly lit from front — no harsh shadows on it
-• Background: warm, glowing, inviting — visible detail in every area
-• NEVER make the image dark or underexposed. BRIGHT and WARM is mandatory."""
+• Abundant fairy lights / warm circular bokeh in background
+• Product brightly lit from front — no harsh shadows
+• NEVER dark or underexposed — ALWAYS bright and inviting"""
 
     if style == 0:
-        # STYLE 0: Warm rustic with curved arrows + abundant natural props
         prompt = f"""{CORE_RULES}
 
 ═══ STYLE: Warm Rustic Lifestyle ═══
-Surface: rustic wooden table or warm wooden board.
-Background: warm fairy lights bokeh, soft golden glow.
+Surface: rustic wooden table or warm wooden board with visible grain.
+Background: warm fairy lights bokeh, soft golden glow filling corners.
 Color palette: warm cream, honey gold, cinnamon brown, soft terracotta.
-
-═══ TYPOGRAPHY ═══
-TITLE «{title}» at TOP — 20% of image:
-  → Large bold serif font (like Playfair Display), UPPERCASE or mixed case
-  → Color: deep warm brown or charcoal — strong contrast against bright background
-  → Elegant, premium, readable
-
-SUBTITLE «{subtitle}» below title:
-  → Italic serif or light script — DIFFERENT from title font
-  → Color: warm gold or muted terracotta
-
-FEATURE CALLOUTS — with CURVED ARROWS pointing to product:
-  → Place 4 labels around product (top-left, top-right, bottom-left, bottom-right)
-  → Each label: BOLD text in warm brown or charcoal
-  → CURVED arrow lines (organic, hand-drawn feel — NOT straight, NOT rigid)
-  → Arrows: thin, cream/gold color, gently curving from label toward product
-  → VARY font sizes: 2 main features LARGER, 2 details SMALLER
-
-═══ RESULT ═══
-Bright, warm, cozy, abundant. Like the BEST Wildberries product cards.
-Props fill every corner. Fairy lights sparkle. Product shines in center."""
+Atmosphere: cozy home, autumn warmth, artisan craftsmanship."""
 
     elif style == 1:
-        # STYLE 1: Light elegant with organic flowing arrows
         prompt = f"""{CORE_RULES}
 
 ═══ STYLE: Light Elegant Editorial ═══
-Surface: light marble, white linen, or pale wood — BRIGHT surface.
-Background: soft warm bokeh, blush/cream tones.
+Surface: light marble, white linen, or pale birch wood — BRIGHT surface.
+Background: soft warm bokeh, blush/cream tones, airy.
 Color palette: ivory, blush pink, sage green, soft gold accents.
-Overall feel: BRIGHT, AIRY, CLEAN but rich with props.
-
-═══ TYPOGRAPHY ═══
-TITLE «{title}» at TOP:
-  → Large bold condensed sans-serif, UPPERCASE
-  → Color: deep forest green or rich charcoal — STRONG contrast
-  → Clean, modern, confident
-
-SUBTITLE «{subtitle}» below title:
-  → Thin elegant italic — contrasts with bold title
-  → Color: muted rose or soft gold
-
-FEATURE CALLOUTS with FLOWING CURVED ARROWS:
-  → 4 labels positioned around the centered product
-  → Thin CURVED arrow lines (flowing, organic — like hand-drawn)
-  → Arrow color: soft sage green or rose gold
-  → Label text: mix of BOLD and light weights for variety
-  → Use 2 colors: charcoal for main features, muted gold for secondary
-  → Small decorative leaf/botanical element near 1-2 labels
-
-═══ RESULT ═══
-Bright, clean, elegant. Premium but warm. Magazine editorial quality.
-Product glows in bright soft light. Props add texture without clutter."""
+Atmosphere: bright, clean, premium magazine editorial."""
 
     elif style == 2:
-        # STYLE 2: Golden warm with mixed typography and abundant botanicals
         prompt = f"""{CORE_RULES}
 
 ═══ STYLE: Golden Warm Botanical ═══
-Surface: warm wooden table with visible grain texture.
-Background: GOLDEN warm bokeh — many soft circular light spots.
+Surface: warm wooden table, visible grain texture.
+Background: GOLDEN bokeh — many soft circular warm light spots.
 Color palette: deep gold, warm amber, cream, burnt sienna, forest green.
-Fill scene with BOTANICAL elements: leaves, dried flowers, spices, natural textures.
-
-═══ TYPOGRAPHY ═══
-TITLE «{title}» at TOP — dominant:
-  → Elegant serif font with DECORATIVE CHARACTER (Bodoni or similar)
-  → Color: deep warm burgundy or rich forest green
-  → Large, beautiful, eye-catching
-
-SUBTITLE «{subtitle}» below title:
-  → Script/calligraphic or thin italic — VERY different from title
-  → Color: warm gold or soft cream
-
-FEATURE CALLOUTS with CURVED ARROWS:
-  → 4 labels at corners around product
-  → CURVED organic arrow lines pointing to product — smooth, flowing
-  → Arrow style: thin, warm gold or cream colored
-  → Label text uses MULTIPLE STYLES:
-    - 2 features in BOLD UPPERCASE (sans-serif)
-    - 2 features in lighter italic (serif)
-  → Different colors: some warm brown, some cream/gold
-  → Small botanical decorations near labels (tiny leaf, flower)
-
-═══ RESULT ═══
-Warm, golden, abundant, alive with botanicals and warm light.
-Like a luxury artisan brand photoshoot. Bright and inviting."""
+Fill scene with botanical elements: dried flowers, spices, natural textures.
+Atmosphere: luxury artisan brand photoshoot, abundant botanicals."""
 
     else:
-        # STYLE 3: Bright festive with rich props and varied callout styles
         prompt = f"""{CORE_RULES}
 
 ═══ STYLE: Bright Festive Abundance ═══
-Surface: warm wood or natural fabric (linen, burlap).
-Background: LOTS of warm fairy lights / golden bokeh — festive, bright, sparkling.
+Surface: warm wood or natural linen/burlap fabric.
+Background: LOTS of warm fairy lights / golden bokeh — festive, sparkling.
 Color palette: warm cream, cinnamon, gold, deep green, touches of burgundy.
-EVERY CORNER must have props: botanicals, spices, ingredients, natural elements.
-Scene feels CELEBRATORY, WARM, ABUNDANT — like a holiday gift display.
-
-═══ TYPOGRAPHY ═══
-TITLE «{title}» at TOP — large and eye-catching:
-  → Bold serif or decorative display font
-  → Color: charcoal or deep warm brown — maximum readability
-  → Occupies top 20% of image
-
-SUBTITLE «{subtitle}» below title:
-  → Italic or script font — CONTRASTING style from title
-  → Color: warm gold or soft terracotta
-
-FEATURE CALLOUTS with ORGANIC CURVED ARROWS:
-  → 4 labels spread around the product
-  → CURVED arrows (smooth organic curves — like hand-drawn with a pen)
-  → NOT straight lines, NOT rigid — flowing and natural
-  → Arrows: thin, cream or gold colored, with small arrowhead tip
-  → Label typography VARIES:
-    - Mix BOLD and regular weight text
-    - Mix 2 different colors (e.g., dark brown + gold)
-    - Main features slightly LARGER than secondary ones
-  → Small natural decorative elements scattered near some labels
-
-═══ RESULT ═══
-Bright, warm, festive, ABUNDANT with props and fairy lights.
-Product perfectly centered and brightly lit. Labels clear and readable.
-This is the BEST marketplace card anyone has ever seen."""
+EVERY CORNER filled with props: botanicals, spices, natural elements.
+Atmosphere: celebratory, warm, abundant — premium holiday gift display."""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
@@ -765,102 +745,297 @@ def draw_text_shadow(draw, xy, text, font, fill, shadow=(0, 0, 0), s_alpha=180, 
     draw.text((x, y), text, font=font, fill=fill)
 
 
-# ── MAKE INFOGRAPHIC — финальная сборка ──────────────────────────────────────────
-def make_infographic(img_path: str, data: dict, scene_bg_path: str | None = None) -> str:
-    title    = data.get("title", "Товар").upper()
-    subtitle = data.get("subtitle", "")
-    features = data.get("features", [])[:4]
-    badge    = data.get("badge", "")
+# ── BEZIER CURVED ARROW ───────────────────────────────────────────────────────────
+def draw_curved_arrow(draw, start, end, color=(40, 40, 40, 210), width=3, curvature=0.28):
+    """Рисует плавную bezier-стрелку с наконечником."""
+    import math
+    sx, sy = float(start[0]), float(start[1])
+    ex, ey = float(end[0]), float(end[1])
+    dx, dy = ex - sx, ey - sy
+    dist = math.sqrt(dx * dx + dy * dy)
+    if dist < 5:
+        return
+    # Контрольная точка — смещение перпендикулярно середине
+    mx, my = (sx + ex) / 2, (sy + ey) / 2
+    perp_x = -dy / dist * dist * curvature
+    perp_y =  dx / dist * dist * curvature
+    ctrl = (mx + perp_x, my + perp_y)
+    # Генерация точек кривой
+    steps = 48
+    pts = []
+    for i in range(steps + 1):
+        t = i / steps
+        x = (1 - t) ** 2 * sx + 2 * (1 - t) * t * ctrl[0] + t ** 2 * ex
+        y = (1 - t) ** 2 * sy + 2 * (1 - t) * t * ctrl[1] + t ** 2 * ey
+        pts.append((int(x), int(y)))
+    for i in range(len(pts) - 1):
+        draw.line([pts[i], pts[i + 1]], fill=color, width=width)
+    # Наконечник стрелки
+    if len(pts) >= 4:
+        adx = pts[-1][0] - pts[-4][0]
+        ady = pts[-1][1] - pts[-4][1]
+        alen = math.sqrt(adx * adx + ady * ady)
+        if alen > 0:
+            adx, ady = adx / alen, ady / alen
+            tip = (int(ex), int(ey))
+            p1 = (int(ex - 11 * adx + 6 * ady), int(ey - 11 * ady - 6 * adx))
+            p2 = (int(ex - 11 * adx - 6 * ady), int(ey - 11 * ady + 6 * adx))
+            draw.polygon([tip, p1, p2], fill=color)
 
-    WHITE = (255, 255, 255, 255)
 
-    # ── Фон: сгенерированная сцена или fallback ──────────────────────────────────
-    if scene_bg_path and os.path.exists(scene_bg_path):
-        canvas = Image.open(scene_bg_path).convert("RGBA").resize((W, H), Image.LANCZOS)
-    else:
-        raw = Image.open(img_path).convert("RGB")
-        rw, rh = raw.size
-        sq = min(rw, rh)
-        bg = raw.crop(((rw-sq)//2, (rh-sq)//2, (rw-sq)//2+sq, (rh-sq)//2+sq))
-        canvas = bg.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(45)).convert("RGBA")
+def _callout_text_block(draw, x, y, text, font, color, shadow_color, align="left", max_w=220):
+    """Рисует текстовый блок callout с тенью, поддержка left/right выравнивания."""
+    lines = wrap(text, font, max_w)
+    lh = text_h(font) + 5
+    for i, line in enumerate(lines[:2]):
+        lx = x
+        if align == "right":
+            bw = int(font.getlength(line))
+            lx = x - bw
+        sx, sy = lx + 2, y + i * lh + 2
+        draw.text((sx, sy), line, font=font, fill=(*shadow_color, 120))
+        draw.text((lx, y + i * lh), line, font=font, fill=color)
 
-    # ── Затемнение сверху и снизу для текста ─────────────────────────────────────
-    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    od = ImageDraw.Draw(ov)
-    for i in range(380):
-        a = int(170 * (1 - i / 380) ** 1.6)
-        od.line([(0, i), (W, i)], fill=(0, 0, 0, a))
-    for i in range(350):
-        a = int(190 * (1 - i / 350) ** 1.4)
-        od.line([(0, H - 1 - i), (W, H - 1 - i)], fill=(0, 0, 0, a))
-    canvas = Image.alpha_composite(canvas, ov)
+
+def _render_classic(canvas: "Image.Image", title: str, subtitle: str,
+                    features: list, badge: str, palette: dict) -> "Image.Image":
+    """
+    Шаблон КЛАССИКА — как у конкурента:
+    - Крупный тёмно-зелёный заголовок сверху
+    - Italic подзаголовок
+    - 4 изогнутых bezier стрелок с callout-текстом по углам
+    - НЕТ тёмного overlay
+    """
+    canvas = canvas.copy()
     draw = ImageDraw.Draw(canvas)
 
-    # ── ЗАГОЛОВОК — крупно сверху ────────────────────────────────────────────────
-    title_max_w = W - MARGIN * 2
-    f_title_use = None
+    title_color    = tuple(int(palette["title"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+    arrow_color    = tuple(int(palette["arrow"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+    subtitle_color = (int(palette["accent"].lstrip("#")[0:2], 16),
+                      int(palette["accent"].lstrip("#")[2:4], 16),
+                      int(palette["accent"].lstrip("#")[4:6], 16))
+
+    # ── ЗАГОЛОВОК — тёмный serif, крупно, сверху ──────────────────────────────
+    f_title = None
     title_lines = []
-    for size in (100, 88, 76, 64, 54):
-        f_t = get_font("bold", size)
-        lines = wrap(title, f_t, title_max_w)
-        if len(lines) <= 3:
-            f_title_use = f_t
+    title_max_w = W - MARGIN * 2
+    for size in (90, 76, 64, 54):
+        ft = get_font("serif", size)
+        lines = wrap(title, ft, title_max_w)
+        if len(lines) <= 2:
+            f_title = ft
             title_lines = lines
             break
-    if not f_title_use:
-        f_title_use = get_font("bold", 54)
-        title_lines = wrap(title, f_title_use, title_max_w)
+    if not f_title:
+        f_title = get_font("serif", 54)
+        title_lines = wrap(title, f_title, title_max_w)
 
-    ty = 50
-    th = text_h(f_title_use)
-    for line in title_lines[:3]:
-        x = centered_x(line, f_title_use)
-        draw_text_shadow(draw, (x, ty), line, f_title_use, WHITE, s_alpha=220, offset=4)
-        ty += th + 6
+    ty = 36
+    th = text_h(f_title)
+    for line in title_lines[:2]:
+        x = centered_x(line, f_title)
+        # Лёгкая тень
+        draw.text((x + 2, ty + 2), line, font=f_title, fill=(*title_color, 60))
+        draw.text((x, ty), line, font=f_title, fill=(*title_color, 255))
+        ty += th + 8
 
-    # Подзаголовок — курсив-стиль, мягче
+    # ── ПОДЗАГОЛОВОК ──────────────────────────────────────────────────────────
     if subtitle:
-        f_sub = get_font("regular", 36)
-        ty += 8
+        f_sub = get_font("callout", 34)
+        ty += 4
         for line in wrap(subtitle, f_sub, title_max_w)[:2]:
             x = centered_x(line, f_sub)
-            draw_text_shadow(draw, (x, ty), line, f_sub, (255, 220, 160, 255), s_alpha=160, offset=2)
+            draw.text((x + 1, ty + 1), line, font=f_sub, fill=(*subtitle_color, 80))
+            draw.text((x, ty), line, font=f_sub, fill=(*subtitle_color, 220))
             ty += text_h(f_sub) + 4
 
-    # ── ПРЕИМУЩЕСТВА — элегантно внизу ───────────────────────────────────────────
-    f_feat = get_font("bold", 30)
-    feat_lh = text_h(f_feat) + 16
-    total_fh = len(features) * feat_lh + 24
+    # ── CALLOUT POSITIONS вокруг центра товара ────────────────────────────────
+    # Товар: центр в (540, 570), примерно 300px в ширину, 500px в высоту
+    prod_cx = W // 2
+    prod_cy = int(H * 0.565)
+    prod_rw = 155   # радиус по горизонтали до края товара
+    prod_rh = 230   # радиус по вертикали до края товара
 
-    fy_start = H - total_fh - 26
+    # (текст: x, y, выравнивание) + (стрелка: конечная точка на товаре)
+    if len(features) >= 4:
+        callouts = [
+            # Левый верх
+            {"text": features[0], "tx": MARGIN + 10,       "ty": int(H * 0.37),
+             "align": "left",  "tip": (prod_cx - prod_rw, prod_cy - int(prod_rh * 0.35))},
+            # Правый верх
+            {"text": features[1], "tx": W - MARGIN - 10,   "ty": int(H * 0.37),
+             "align": "right", "tip": (prod_cx + prod_rw, prod_cy - int(prod_rh * 0.35))},
+            # Левый низ
+            {"text": features[2], "tx": MARGIN + 10,       "ty": int(H * 0.70),
+             "align": "left",  "tip": (prod_cx - prod_rw, prod_cy + int(prod_rh * 0.35))},
+            # Правый низ
+            {"text": features[3], "tx": W - MARGIN - 10,   "ty": int(H * 0.70),
+             "align": "right", "tip": (prod_cx + prod_rw, prod_cy + int(prod_rh * 0.35))},
+        ]
+    else:
+        callouts = []
 
-    # Полупрозрачная подложка
-    feat_panel = Image.new("RGBA", (W, total_fh + 30), (0, 0, 0, 0))
-    ImageDraw.Draw(feat_panel).rounded_rectangle(
-        [MARGIN - 14, 0, W - MARGIN + 14, total_fh + 30], radius=22, fill=(0, 0, 0, 80)
-    )
-    paste_a(canvas, feat_panel, (0, fy_start - 8))
+    f_callout_main = get_font("callout", 34)
+    f_callout_sub  = get_font("callout", 28)
+    shadow = (255, 255, 255)  # белая тень на светлом фоне — добавляет читаемость
 
-    fy = fy_start
-    f_dot = get_font("bold", 34)
-    for feat in features[:4]:
-        # Символ-буллет
-        draw_text_shadow(draw, (MARGIN + 4, fy - 2), "•", f_dot,
-                         (255, 190, 80, 255), s_alpha=150, offset=2)
-        # Текст
-        draw_text_shadow(draw, (MARGIN + 36, fy), feat, f_feat,
-                         WHITE, s_alpha=180, offset=2)
-        fy += feat_lh
+    for i, c in enumerate(callouts):
+        font_c = f_callout_main if i < 2 else f_callout_sub
+        tx, ty_c = c["tx"], c["ty"]
+        align = c["align"]
 
-    # ── БЕЙДЖ ────────────────────────────────────────────────────────────────────
+        # Рассчитываем точку начала стрелки (от края текстового блока)
+        lines_c = wrap(c["text"], font_c, 220)
+        text_w = max(int(font_c.getlength(l)) for l in lines_c) if lines_c else 0
+        text_h_c = text_h(font_c) * len(lines_c[:2])
+        arrow_sy = ty_c + text_h_c // 2
+
+        if align == "left":
+            arrow_sx = tx + text_w + 12
+        else:
+            arrow_sx = tx - text_w - 12
+
+        # Небольшой полупрозрачный фон под текстом
+        pad = 8
+        bx0 = (tx - pad) if align == "left" else (tx - text_w - pad)
+        bx1 = bx0 + text_w + pad * 2
+        by0 = ty_c - pad // 2
+        by1 = ty_c + text_h_c + pad
+        overlay = Image.new("RGBA", (bx1 - bx0, by1 - by0), (255, 255, 255, 90))
+        canvas.alpha_composite(overlay, (max(0, bx0), max(0, by0)))
+
+        _callout_text_block(draw, tx, ty_c, c["text"], font_c,
+                            color=(*arrow_color, 255),
+                            shadow_color=shadow, align=align, max_w=220)
+        draw_curved_arrow(draw,
+                          start=(arrow_sx, arrow_sy),
+                          end=c["tip"],
+                          color=(*arrow_color, 210), width=3)
+
+    # ── БЕЙДЖ ─────────────────────────────────────────────────────────────────
     if badge:
-        f_badge = get_font("bold", 24)
+        f_badge = get_font("callout", 24)
+        accent = (*subtitle_color, 240)
         btxt = f"  {badge}  "
         bw = int(f_badge.getlength(btxt)) + 14
         bh = 40
-        bl = rlayer(bw, bh, 10, fill=(210, 35, 35, 240))
-        ImageDraw.Draw(bl).text((7, (bh - 24) // 2), btxt, font=f_badge, fill=WHITE)
+        bl = rlayer(bw, bh, 12, fill=accent)
+        ImageDraw.Draw(bl).text((7, (bh - 24) // 2), btxt, font=f_badge,
+                                fill=(255, 255, 255, 255))
         paste_a(canvas, bl, (MARGIN, 14))
+
+    return canvas
+
+
+def _render_minimal(canvas: "Image.Image", title: str, subtitle: str,
+                    features: list, badge: str, palette: dict) -> "Image.Image":
+    """
+    Шаблон МИНИМАЛИЗМ:
+    - Светлый/кремовый фон
+    - Заголовок сверху по центру
+    - Характеристики справа в карточках-бейджах
+    - Без стрелок
+    """
+    canvas = canvas.copy()
+    draw = ImageDraw.Draw(canvas)
+
+    title_color   = tuple(int(palette["title"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+    accent_color  = tuple(int(palette["accent"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+
+    # ── ЗАГОЛОВОК ─────────────────────────────────────────────────────────────
+    f_title = None
+    title_lines = []
+    for size in (82, 70, 58, 48):
+        ft = get_font("serif", size)
+        lines = wrap(title, ft, W - MARGIN * 2)
+        if len(lines) <= 2:
+            f_title, title_lines = ft, lines
+            break
+    if not f_title:
+        f_title = get_font("serif", 48)
+        title_lines = wrap(title, f_title, W - MARGIN * 2)
+
+    ty = 40
+    for line in title_lines[:2]:
+        x = centered_x(line, f_title)
+        draw.text((x + 2, ty + 2), line, font=f_title, fill=(*title_color, 50))
+        draw.text((x, ty), line, font=f_title, fill=(*title_color, 255))
+        ty += text_h(f_title) + 8
+
+    if subtitle:
+        f_sub = get_font("callout", 30)
+        for line in wrap(subtitle, f_sub, W - MARGIN * 2)[:1]:
+            x = centered_x(line, f_sub)
+            draw.text((x, ty + 4), line, font=f_sub, fill=(*accent_color, 200))
+            ty += text_h(f_sub) + 6
+
+    # ── FEATURE БЕЙДЖИ — правая сторона ───────────────────────────────────────
+    f_feat = get_font("callout", 32)
+    badge_x = W - MARGIN - 280
+    badge_y = int(H * 0.38)
+    badge_gap = 10
+
+    for feat in features[:4]:
+        lines_f = wrap(feat, f_feat, 260)
+        feat_h = text_h(f_feat) * len(lines_f[:2]) + 20
+        # Карточка
+        card = rlayer(286, feat_h + 4, 14,
+                      fill=(255, 255, 255, 200),
+                      outline=(*accent_color, 80), ow=2)
+        paste_a(canvas, card, (badge_x - 3, badge_y - 2))
+        # Цветная линия слева
+        line_bar = Image.new("RGBA", (5, feat_h), (*accent_color, 220))
+        paste_a(canvas, line_bar, (badge_x - 3, badge_y - 2))
+        # Текст
+        ty_f = badge_y + 10
+        for fl in lines_f[:2]:
+            draw.text((badge_x + 12, ty_f), fl, font=f_feat,
+                      fill=(*title_color, 240))
+            ty_f += text_h(f_feat) + 4
+        badge_y += feat_h + badge_gap + 8
+
+    return canvas
+
+
+# ── MAKE INFOGRAPHIC — финальная сборка ──────────────────────────────────────────
+def make_infographic(img_path: str, data: dict, scene_bg_path: str | None = None,
+                     template: int = -1) -> str:
+    """
+    Финальная сборка инфографики. Всегда вызывается поверх AI-сцены.
+    template 0 = Классика (curved arrows, dark-green title)
+    template 1 = Минимализм (feature badges справа)
+    template -1 = случайный выбор
+    """
+    title    = data.get("title", "Товар")
+    subtitle = data.get("subtitle", "")
+    features = data.get("features", [])[:4]
+    badge    = data.get("badge", "")
+    palette  = detect_scent_palette(data)
+
+    if template < 0:
+        template = random.randint(0, 1)
+
+    # ── Фон ──────────────────────────────────────────────────────────────────────
+    if scene_bg_path and os.path.exists(scene_bg_path):
+        canvas = Image.open(scene_bg_path).convert("RGBA").resize((W, H), Image.LANCZOS)
+    else:
+        # Fallback: размытый продукт + тёплый кремовый overlay
+        raw = Image.open(img_path).convert("RGB")
+        rw, rh = raw.size
+        sq = min(rw, rh)
+        bg = raw.crop(((rw - sq) // 2, (rh - sq) // 2, (rw - sq) // 2 + sq, (rh - sq) // 2 + sq))
+        canvas = bg.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(50)).convert("RGBA")
+        # Тёплый кремовый overlay вместо тёмного — светлый фон
+        bg_hex = palette["bg"].lstrip("#")
+        bg_rgb = tuple(int(bg_hex[i:i+2], 16) for i in (0, 2, 4))
+        warm_ov = Image.new("RGBA", (W, H), (*bg_rgb, 160))
+        canvas = Image.alpha_composite(canvas, warm_ov)
+
+    # ── Применяем шаблон ─────────────────────────────────────────────────────────
+    if template == 0:
+        canvas = _render_classic(canvas, title, subtitle, features, badge, palette)
+    else:
+        canvas = _render_minimal(canvas, title, subtitle, features, badge, palette)
 
     out = img_path.rsplit(".", 1)[0] + "_card.png"
     canvas.convert("RGB").save(out, "PNG", quality=95)
@@ -1340,13 +1515,24 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.edit_text("⛔ Генерация остановлена.")
                 return
 
-            await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...", reply_markup=stop_kb)
-            out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
+            await msg.edit_text("🎨 Генерирую сцену (20-30 сек)...", reply_markup=stop_kb)
+            scene_path = generate_full_infographic(img_path, data, user_caption=user_caption)
 
             if uid in cancelled_users:
                 cancelled_users.discard(uid)
                 await msg.edit_text("⛔ Генерация остановлена.")
                 return
+
+            # Всегда применяем PIL-постобработку: заголовок + bezier стрелки + callouts
+            await msg.edit_text("✏️ Добавляю типографику и стрелки...", reply_markup=stop_kb)
+            out_path = make_infographic(img_path, data, scene_bg_path=scene_path)
+
+            # Удаляем промежуточную AI-сцену
+            if scene_path and scene_path != out_path:
+                try:
+                    os.remove(scene_path)
+                except OSError:
+                    pass
 
             if not out_path:
                 await msg.edit_text("😔 Не удалось сгенерировать. Попробуй ещё раз.")
