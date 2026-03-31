@@ -1689,7 +1689,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             await msg.edit_text("🔍 Анализирую товар...", reply_markup=stop_kb)
-            data = analyze_product_image(img_path, user_caption=user_caption)
+            # Run blocking API calls in a thread so the event loop stays responsive
+            # (stop button and other users' requests work during generation)
+            data = await asyncio.to_thread(analyze_product_image, img_path, user_caption)
 
             if uid in cancelled_users:
                 cancelled_users.discard(uid)
@@ -1697,7 +1699,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             await msg.edit_text("🎨 Генерирую инфографику (20-30 сек)...", reply_markup=stop_kb)
-            out_path = generate_full_infographic(img_path, data, user_caption=user_caption)
+            out_path = await asyncio.to_thread(generate_full_infographic, img_path, data, user_caption)
 
             if uid in cancelled_users:
                 cancelled_users.discard(uid)
@@ -1986,6 +1988,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if d == "stop_gen":
         task = active_generations.pop(uid, None)
         if task and not task.done():
+            cancelled_users.add(uid)  # signal the thread-based steps to stop early
             task.cancel()
             try:
                 await q.message.edit_text("⛔ Генерация остановлена.")
