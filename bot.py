@@ -487,7 +487,7 @@ def analyze_product_image(image_path: str, user_caption: str = "") -> dict:
 - scene_description — АНГЛИЙСКИЙ, выбери mood который ИДЕАЛЬНО подходит товару
 """
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
             {"type": "text", "text": prompt},
@@ -798,7 +798,8 @@ Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, 
                 image=img_file,
                 prompt=prompt,
                 size="1024x1024",
-                quality="high",
+                quality="medium",
+                timeout=90,
             )
         img_data = result.data[0].b64_json
         if img_data:
@@ -816,8 +817,9 @@ Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, 
             model="gpt-image-1",
             prompt=prompt,
             size="1024x1024",
-            quality="high",
+            quality="medium",
             n=1,
+            timeout=90,
         )
         img_data = result.data[0].b64_json
         if img_data:
