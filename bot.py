@@ -465,7 +465,7 @@ def analyze_product_image(image_path: str, user_caption: str = "") -> dict:
 
 {{
   "title": "КАТЕГОРИЯ ТОВАРА ЗАГЛАВНЫМИ — ЧТО ЭТО ЗА ТОВАР (напр. АРОМАТИЧЕСКАЯ СВЕЧА, КРЕМ ДЛЯ РУК, ШЁЛКОВЫЙ ХАЛАТ). НЕ ПРИДУМЫВАЙ название — пиши только категорию. Макс 26 символов, КАПСЛОК.",
-  "subtitle": "Точное название бренда и/или серии С ЭТИКЕТКИ на фото (напр. ТИШИНА. Апельсин и Корица). Макс 42 символа. Не придумывай — читай с упаковки.",
+  "subtitle": "Если на этикетке/упаковке есть название бренда или серии — напиши его (напр. ТИШИНА. Апельсин и Корица). Если этикетки нет или название нечитаемо — придумай ПРОДАЮЩИЙ подзаголовок/УТП для этого товара (напр. Ручная работа · Премиум качество). Макс 42 символа. НИКОГДА не пиши 'Нет данных' или похожие фразы.",
   "features": [
     "ПРЕИМУЩЕСТВО 1 (макс 20 символов, КАПСЛОК, с цифрами если есть)",
     "ПРЕИМУЩЕСТВО 2 (макс 20 символов, КАПСЛОК)",
@@ -589,8 +589,10 @@ Features must be printed EXACTLY as given below.
 • «{title}» — memorize this spelling. Reproduce it perfectly.
 • NEVER render readable text on the product itself or its label.
   If the product has a label, render it blurred/unreadable — all text goes in the overlay callouts ONLY.
-• Minimum 60px safe margin from ALL edges — no text cut off.
+• Minimum 80px safe margin from ALL edges — no text cut off.
 • Every callout label must be COMPLETE — never cropped by the frame border.
+• NEVER split a word mid-syllable (no "ВЕЛОСНЕ-ЖНЫЙ", no broken words across lines).
+• If text is too long — use a smaller font or shorten the text. NEVER overflow.
 
 ⚠️ ULTRA-PHOTOREALISTIC PRODUCT LAW ⚠️
 The product MUST look like a REAL PHOTOGRAPH — not an illustration, not a 3D render, not a stylized image.
@@ -645,10 +647,12 @@ RESULT: Museum-quality product card. Looks like a campaign for a luxury Russian 
 Rich colors, cinematic depth, gorgeous typography. NOT flat, NOT dull, NOT generic.
 
 ═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+• ALL text must be FULLY VISIBLE and COMPLETE — absolutely no truncation, no cut-off words, no partial letters
+• Minimum 80px safe margin from ALL 4 edges — text and labels must NEVER touch or cross any border
+• Callout labels: position them INWARD from edges, never near corners — ensure the ENTIRE pill/label fits inside the frame
+• If a label would overflow, make the font smaller or abbreviate the text — NEVER let it overflow
+• Russian text only — correct Cyrillic, no typos, no garbled letters, no Latin substitutes
+• Words must NOT be split mid-word across lines (no "ВЕЛОСНЕ-ЖНЫЙ" or broken syllables)"""
 
     elif style == 1:
         prompt = f"""{TEXT_ACCURACY_RULES}
@@ -688,10 +692,12 @@ Aesthetic: modern Scandinavian luxury, minimal but rich in detail.
 Typography is the hero. Colors are muted but intentional. NOT sterile — textured and warm.
 
 ═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+• ALL text must be FULLY VISIBLE and COMPLETE — absolutely no truncation, no cut-off words, no partial letters
+• Minimum 80px safe margin from ALL 4 edges — text and labels must NEVER touch or cross any border
+• Callout labels: position them INWARD from edges, never near corners — ensure the ENTIRE pill/label fits inside the frame
+• If a label would overflow, make the font smaller or abbreviate the text — NEVER let it overflow
+• Russian text only — correct Cyrillic, no typos, no garbled letters, no Latin substitutes
+• Words must NOT be split mid-word across lines (no "ВЕЛОСНЕ-ЖНЫЙ" or broken syllables)"""
 
     elif style == 2:
         prompt = f"""{TEXT_ACCURACY_RULES}
@@ -731,10 +737,12 @@ Final look: A bold, dark, dramatic luxury product card. Like a high-end perfume 
 Extremely visual, premium, impossible to scroll past.
 
 ═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+• ALL text must be FULLY VISIBLE and COMPLETE — absolutely no truncation, no cut-off words, no partial letters
+• Minimum 80px safe margin from ALL 4 edges — text and labels must NEVER touch or cross any border
+• Callout labels: position them INWARD from edges, never near corners — ensure the ENTIRE pill/label fits inside the frame
+• If a label would overflow, make the font smaller or abbreviate the text — NEVER let it overflow
+• Russian text only — correct Cyrillic, no typos, no garbled letters, no Latin substitutes
+• Words must NOT be split mid-word across lines (no "ВЕЛОСНЕ-ЖНЫЙ" or broken syllables)"""
 
     else:
         prompt = f"""{TEXT_ACCURACY_RULES}
@@ -774,10 +782,12 @@ Final look: An artisan lifestyle editorial. Like a premium organic/beauty brand 
 Warm, lush, inviting, and deeply appetizing. Rich colors, beautiful typography, abundant scene.
 
 ═══ TEXT RENDERING RULES (CRITICAL) ═══
-• ALL text must be FULLY VISIBLE — no truncation, no cut-off words, no partial letters
-• Minimum 60px margin from all edges — text never bleeds off frame
-• Each callout label must be COMPLETE — never cut by image border
-• Russian text only — correct Cyrillic spelling, no Latin substitutes, no OCR artifacts"""
+• ALL text must be FULLY VISIBLE and COMPLETE — absolutely no truncation, no cut-off words, no partial letters
+• Minimum 80px safe margin from ALL 4 edges — text and labels must NEVER touch or cross any border
+• Callout labels: position them INWARD from edges, never near corners — ensure the ENTIRE pill/label fits inside the frame
+• If a label would overflow, make the font smaller or abbreviate the text — NEVER let it overflow
+• Russian text only — correct Cyrillic, no typos, no garbled letters, no Latin substitutes
+• Words must NOT be split mid-word across lines (no "ВЕЛОСНЕ-ЖНЫЙ" or broken syllables)"""
 
     out_path = image_path.rsplit(".", 1)[0] + "_infographic.png"
 
